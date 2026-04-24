@@ -152,8 +152,77 @@ def run_reports(
     return "Reports built:\n" + "\n".join(f"  {p}" for p in paths)
 
 
+@tool
+def get_analysis_summary(
+    scene_set_id: str,
+    representation_spec_id: str = DEFAULT_SPEC_ID,
+) -> str:
+    """Read stored analysis results and return key statistics about the data.
+
+    Loads the representation summary (animate/inanimate counts, top-1 class
+    distribution) and both decomposition summaries (PCA explained variance,
+    NMF reconstruction error) from disk.  Does not require a DataJoint
+    connection — reads the JSON files saved during computation.
+
+    Args:
+        scene_set_id:           Scene set to summarise.
+        representation_spec_id: Which representation to read summaries for.
+    """
+    import json
+    from pathlib import Path
+    from mousehash.artifacts.paths import decompositions_root, representations_root
+
+    lines: list[str] = []
+
+    # Representation summary
+    rep_summary_path = (
+        representations_root() / scene_set_id / representation_spec_id / "summary.json"
+    )
+    if rep_summary_path.exists():
+        rep = json.loads(rep_summary_path.read_text())
+        lines += [
+            f"Representation ({representation_spec_id}):",
+            f"  n_images    = {rep.get('n_images')}",
+            f"  n_animate   = {rep.get('n_animate')}",
+            f"  n_inanimate = {rep.get('n_inanimate')}",
+            f"  top-1 class distribution (class_idx: count):",
+        ]
+        dist = rep.get("top1_distribution", {})
+        for cls, cnt in sorted(dist.items(), key=lambda x: -x[1])[:10]:
+            lines.append(f"    class {cls}: {cnt} images")
+    else:
+        lines.append("Representation summary not found — run compute_representations first.")
+
+    lines.append("")
+
+    # Decomposition summaries
+    for decomp_spec_id in DEFAULT_DECOMP_SPECS:
+        decomp_summary_path = (
+            decompositions_root()
+            / scene_set_id
+            / representation_spec_id
+            / decomp_spec_id
+            / "summary.json"
+        )
+        if decomp_summary_path.exists():
+            d = json.loads(decomp_summary_path.read_text())
+            method = d.get("method", "?")
+            lines.append(f"Decomposition ({decomp_spec_id}):")
+            lines.append(f"  method      = {method}")
+            lines.append(f"  n_components= {d.get('n_components')}")
+            if "explained_variance_ratio_total" in d:
+                lines.append(f"  total var explained = {d['explained_variance_ratio_total']:.1%}")
+            if "reconstruction_err" in d:
+                lines.append(f"  reconstruction err  = {d['reconstruction_err']:.4f}")
+        else:
+            lines.append(f"Decomposition summary not found for {decomp_spec_id}.")
+
+    return "\n".join(lines)
+
+
 ALL_TOOLS = [
     check_pipeline_status,
+    get_analysis_summary,
     run_ingestion,
     run_representations,
     run_decompositions,

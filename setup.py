@@ -24,6 +24,8 @@ setup(
     extras_require={
         "agents": [
             "smolagents>=1.7.0",
+            "gradio>=4.0",
+            "click>=8.2",
         ],
         "dev": [
             "pytest>=8",
