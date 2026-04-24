@@ -5,6 +5,9 @@ from pathlib import Path
 import numpy as np
 
 
+NATURAL_SCENES_EXPERIMENT_ID = 501559087
+
+
 def fetch_natural_scene_template(manifest_path: Path) -> np.ndarray:
     """Return (n_images, height, width) uint8 array of natural scene stimuli.
 
@@ -26,8 +29,15 @@ def fetch_natural_scene_template(manifest_path: Path) -> np.ndarray:
             f"No natural-scene experiments found in manifest at {manifest_path}"
         )
 
-    # Any session with natural scenes carries the same template; use the first.
-    exp_id = exps[0]["id"]
+    exp_ids = {exp["id"] for exp in exps}
+    if NATURAL_SCENES_EXPERIMENT_ID not in exp_ids:
+        raise ValueError(
+            "Configured natural-scenes experiment "
+            f"{NATURAL_SCENES_EXPERIMENT_ID} is unavailable in manifest at {manifest_path}"
+        )
+
+    # Match the original ProjectionSort pipeline, which used SESSION_B.
+    exp_id = NATURAL_SCENES_EXPERIMENT_ID
     dataset = boc.get_ophys_experiment_data(exp_id)
     template = dataset.get_stimulus_template("natural_scenes")
     return template  # (n_images, H, W) uint8

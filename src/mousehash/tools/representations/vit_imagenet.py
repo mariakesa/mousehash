@@ -9,6 +9,53 @@ from scipy.special import softmax
 logger = logging.getLogger(__name__)
 
 
+def run_vit_on_frames(
+    frames_array: np.ndarray,
+    model_name: str = "google/vit-base-patch16-224",
+    batch_size: int = 16,
+    device: str = "cpu",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Run the ViT classifier directly on raw grayscale stimulus frames.
+
+    This matches the original ProjectionSort workflow: repeat each grayscale
+    frame across three channels and run the HuggingFace image-classification
+    model one frame at a time.
+
+    Args:
+        frames_array: ``(n_images, height, width)`` uint8 stimulus array.
+        model_name:   HuggingFace model ID.
+        batch_size:   Retained for API compatibility; inference runs per-frame.
+        device:       ``"cpu"`` or ``"cuda"``.
+
+    Returns:
+        Tuple of ``(logits, probabilities)``, each ``(n_images, n_classes)``
+        float32 arrays.
+    """
+    import torch
+    from transformers import AutoModelForImageClassification, AutoProcessor
+
+    processor = AutoProcessor.from_pretrained(model_name)
+    model = AutoModelForImageClassification.from_pretrained(model_name)
+    model = model.to(device)
+    model.eval()
+
+    frames_3ch = np.repeat(frames_array[:, None, :, :], 3, axis=1)
+    all_logits = np.empty((len(frames_array), model.config.num_labels), dtype=np.float32)
+    for index, frame in enumerate(frames_3ch):
+        inputs = processor(images=frame, return_tensors="pt")
+        inputs = {key: value.to(device) for key, value in inputs.items()}
+
+        with torch.no_grad():
+            logits = model(**inputs).logits.squeeze(0).detach().cpu().numpy()
+
+        all_logits[index] = logits.astype(np.float32)
+        logger.info("  Processed %d / %d images", index + 1, len(frames_array))
+
+    logits = all_logits
+    probabilities = softmax(logits, axis=1).astype(np.float32)
+    return logits.astype(np.float32), probabilities
+
+
 def run_vit(
     image_paths: list[Path],
     model_name: str = "google/vit-base-patch16-224",
@@ -17,46 +64,31 @@ def run_vit(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Run ViT ImageNet classifier on a list of image files.
 
-    Converts grayscale images to RGB before processing (AllenSDK natural
-    scenes are single-channel; ViT expects three-channel input).
+    Loads grayscale image files, stacks them into a raw frame tensor, then
+    delegates to :func:`run_vit_on_frames`.
 
     Args:
         image_paths: Ordered list of image files to classify.
         model_name:  HuggingFace model ID.
-        batch_size:  Number of images per forward pass.
+        batch_size:  Retained for API compatibility; inference runs per-frame.
         device:      ``"cpu"`` or ``"cuda"``.
 
     Returns:
         Tuple of ``(logits, probabilities)``, each ``(n_images, n_classes)``
         float32 arrays.
     """
-    import torch
     from PIL import Image
-    from transformers import ViTForImageClassification, ViTImageProcessor
 
-    processor = ViTImageProcessor.from_pretrained(model_name)
-    model = ViTForImageClassification.from_pretrained(model_name)
-    model = model.to(device)
-    model.eval()
-
-    all_logits: list[np.ndarray] = []
-    n = len(image_paths)
-
-    for start in range(0, n, batch_size):
-        batch = image_paths[start : start + batch_size]
-        images = [Image.open(p).convert("RGB") for p in batch]
-        inputs = processor(images=images, return_tensors="pt")
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-
-        with torch.no_grad():
-            outputs = model(**inputs)
-
-        all_logits.append(outputs.logits.cpu().float().numpy())
-        logger.info("  Processed %d / %d images", min(start + batch_size, n), n)
-
-    logits = np.concatenate(all_logits, axis=0)          # (n, 1000)
-    probabilities = softmax(logits, axis=1).astype(np.float32)
-    return logits.astype(np.float32), probabilities
+    grayscale_frames = np.stack(
+        [np.array(Image.open(path).convert("L"), dtype=np.uint8) for path in image_paths],
+        axis=0,
+    )
+    return run_vit_on_frames(
+        grayscale_frames,
+        model_name=model_name,
+        batch_size=batch_size,
+        device=device,
+    )
 
 
 def compute_stimulus_representation(
@@ -79,12 +111,14 @@ def compute_stimulus_representation(
     """
     from mousehash.artifacts.io import load_json, save_json, save_npy
     from mousehash.artifacts.paths import representations_root
+    from mousehash.config import ALLEN_MANIFEST_PATH
     from mousehash.schema.representations import (
         AnimateInanimateRule,
         RepresentationSpec,
         StimulusRepresentation,
     )
     from mousehash.schema.stimuli import AllenNaturalSceneImage
+    from mousehash.tools.allen.stimulus_fetch import fetch_natural_scene_template
     from mousehash.tools.representations.animate_inanimate import (
         derive_animate_inanimate,
         derive_top1,
@@ -105,22 +139,28 @@ def compute_stimulus_representation(
     spec = (RepresentationSpec & {"representation_spec_id": representation_spec_id}).fetch1()
     rule = (AnimateInanimateRule & {"rule_id": rule_id}).fetch1()
 
-    # --- load ordered image paths from DataJoint ---
+    # --- load ordered image paths from DataJoint for downstream artifacts ---
     rows = (AllenNaturalSceneImage & {"scene_set_id": scene_set_id}).fetch(
         "image_idx", "image_path", as_dict=True, order_by="image_idx"
     )
     image_paths = [Path(r["image_path"]) for r in rows]
+    frames_array = fetch_natural_scene_template(ALLEN_MANIFEST_PATH)
+    if len(frames_array) != len(image_paths):
+        raise ValueError(
+            "Allen stimulus template length does not match ingested scene set: "
+            f"template={len(frames_array)} images, ingested={len(image_paths)} images"
+        )
     logger.info(
         "Running ViT on %d images (model=%s, device=%s, batch=%d)",
-        len(image_paths),
+        len(frames_array),
         spec["model_name"],
         spec["device"],
         spec["batch_size"],
     )
 
     # --- ViT inference ---
-    logits, probabilities = run_vit(
-        image_paths,
+    logits, probabilities = run_vit_on_frames(
+        frames_array,
         model_name=spec["model_name"],
         batch_size=spec["batch_size"],
         device=spec["device"],

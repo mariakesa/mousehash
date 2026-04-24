@@ -16,6 +16,7 @@ def _required(name: str) -> str:
 
 
 DATA_ROOT = Path(_required("MOUSEHASH_DATA_ROOT")).expanduser().resolve()
+ALLEN_MANIFEST_PATH = Path(_required("ALLEN_DATA")).expanduser().resolve()
 
 DJ_HOST = _required("DJ_HOST")
 DJ_PORT = int(os.getenv("DJ_PORT", "3306"))
