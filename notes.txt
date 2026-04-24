@@ -1,0 +1,5 @@
+/home/maria/Documents/AllenBrainObservatory/brain_observatory_manifest.json
+
+.venv/bin/python scripts/ingest_natural_scenes.py \                           
+      --manifest /home/maria/Documents/AllenBrainObservatory/brain_observatory_manifest.json \        
+      --scene-set-id allen_natural_scenes_v1
