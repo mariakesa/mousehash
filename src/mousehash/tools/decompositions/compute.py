@@ -31,7 +31,7 @@ def compute_stimulus_decomposition(
     Returns:
         Summary dict written to ``summary.json`` on disk.
     """
-    from mousehash.artifacts.io import load_npy, save_json, save_npy
+    from mousehash.artifacts.io import load_json, load_npy, save_json, save_npy
     from mousehash.artifacts.paths import decompositions_root
     from mousehash.schema.decompositions import DecompositionSpec, StimulusDecomposition
     from mousehash.schema.representations import StimulusRepresentation
@@ -45,7 +45,8 @@ def compute_stimulus_decomposition(
 
     if StimulusDecomposition & decomp_key:
         logger.info("StimulusDecomposition already exists, skipping.")
-        return (StimulusDecomposition & decomp_key).fetch1()
+        summary_path = (StimulusDecomposition & decomp_key).fetch1("summary_path")
+        return load_json(Path(summary_path))
 
     # --- load spec and representation paths ---
     spec = (DecompositionSpec & {"decomposition_spec_id": decomposition_spec_id}).fetch1()

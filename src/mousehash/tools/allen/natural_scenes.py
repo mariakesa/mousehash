@@ -86,3 +86,4 @@ def ingest_natural_scenes(
         n_images=n_images,
         image_dir=str(image_dir),
     )
+

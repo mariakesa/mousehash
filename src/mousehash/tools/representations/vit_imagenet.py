@@ -77,7 +77,7 @@ def compute_stimulus_representation(
     Returns:
         Summary dict (mirrors what is stored in ``summary.json``).
     """
-    from mousehash.artifacts.io import save_json, save_npy
+    from mousehash.artifacts.io import load_json, save_json, save_npy
     from mousehash.artifacts.paths import representations_root
     from mousehash.schema.representations import (
         AnimateInanimateRule,
@@ -98,7 +98,8 @@ def compute_stimulus_representation(
     )
     if StimulusRepresentation & key:
         logger.info("StimulusRepresentation already exists for %s, skipping.", key)
-        return (StimulusRepresentation & key).fetch1()
+        summary_path = (StimulusRepresentation & key).fetch1("summary_path")
+        return load_json(Path(summary_path))
 
     # --- load spec and rule ---
     spec = (RepresentationSpec & {"representation_spec_id": representation_spec_id}).fetch1()
