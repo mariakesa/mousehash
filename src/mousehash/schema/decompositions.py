@@ -18,6 +18,16 @@ class DecompositionSpec(dj.Lookup):
     n_components: int
     normalize_input: bool
     mode: varchar(64)
+    nmf_init="nndsvda": varchar(32)
+    nmf_solver="cd": varchar(8)
+    nmf_beta_loss="frobenius": varchar(32)
+    nmf_max_iter=1000: int
+    nmf_tol=1e-4: float
+    nmf_random_state=0: int
+    nmf_alpha_w=0.0: float
+    nmf_alpha_h=0.0: float
+    nmf_l1_ratio=0.0: float
+    nmf_temperature=1.0: float
     """
 
 

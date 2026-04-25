@@ -44,6 +44,7 @@ DecompositionSpec.insert1(
         n_components=10,
         normalize_input=False,
         mode="exploratory",
+        nmf_temperature=1.0,
     ),
     skip_duplicates=True,
 )

@@ -153,6 +153,79 @@ def run_reports(
 
 
 @tool
+def run_nmf_at_temperature(
+    scene_set_id: str,
+    temperature: float,
+    n_components: int = 10,
+    representation_spec_id: str = DEFAULT_SPEC_ID,
+    rule_id: str = DEFAULT_RULE_ID,
+) -> str:
+    """Run NMF on the stored softmax probabilities at a chosen temperature.
+
+    Use this to compare how concentration of the semantic distribution affects
+    the recovered NMF themes. Temperature is applied to the stored
+    probabilities as ``p_T proportional to p^(1/T)`` (mathematically equivalent
+    to ``softmax(logits/T)``); ``T<1`` sharpens, ``T>1`` smooths, ``T=1`` is a
+    no-op. The ViT does NOT need to be re-run — do not invent new
+    ``representation_spec_id`` values for this; only the existing
+    representation is used.
+
+    Synthesises (or reuses) a ``DecompositionSpec`` with id
+    ``nmf_probs_<n_components>_T<temperature>``, runs the decomposition,
+    builds the HTML report, and returns the spec id, reconstruction error,
+    and report path.
+
+    Args:
+        scene_set_id:           Scene set whose representation to decompose.
+        temperature:            Temperature for the input probabilities. Must be > 0.
+        n_components:           Number of NMF components (default 10).
+        representation_spec_id: Existing RepresentationSpec id; leave at default.
+        rule_id:                Existing AnimateInanimateRule id; leave at default.
+    """
+    from mousehash.schema.decompositions import DecompositionSpec
+    from mousehash.tools.decompositions.compute import compute_stimulus_decomposition
+    from mousehash.tools.reports.build import build_decomposition_report
+
+    if temperature <= 0:
+        return f"Error: temperature must be > 0, got {temperature}"
+
+    temp_label = f"{temperature:g}".replace(".", "p")
+    decomposition_spec_id = f"nmf_probs_{n_components}_T{temp_label}"
+
+    DecompositionSpec.insert1(
+        dict(
+            decomposition_spec_id=decomposition_spec_id,
+            method="nmf",
+            input_kind="probabilities",
+            n_components=n_components,
+            normalize_input=False,
+            mode="agent",
+            nmf_temperature=temperature,
+        ),
+        skip_duplicates=True,
+    )
+
+    decomp_summary = compute_stimulus_decomposition(
+        scene_set_id=scene_set_id,
+        representation_spec_id=representation_spec_id,
+        rule_id=rule_id,
+        decomposition_spec_id=decomposition_spec_id,
+    )
+    report_summary = build_decomposition_report(
+        scene_set_id=scene_set_id,
+        representation_spec_id=representation_spec_id,
+        rule_id=rule_id,
+        decomposition_spec_id=decomposition_spec_id,
+    )
+    return (
+        f"NMF at T={temperature} done. "
+        f"spec={decomposition_spec_id}, "
+        f"reconstruction_err={decomp_summary['reconstruction_err']:.4f}, "
+        f"report={report_summary['report_path']}"
+    )
+
+
+@tool
 def get_analysis_summary(
     scene_set_id: str,
     representation_spec_id: str = DEFAULT_SPEC_ID,
@@ -226,5 +299,6 @@ ALL_TOOLS = [
     run_ingestion,
     run_representations,
     run_decompositions,
+    run_nmf_at_temperature,
     run_reports,
 ]

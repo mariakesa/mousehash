@@ -76,7 +76,20 @@ def compute_stimulus_decomposition(
         result = run_pca(X, n_components=n_components, normalize_input=normalize_input)
     elif method == "nmf":
         from mousehash.tools.decompositions.nmf import run_nmf
-        result = run_nmf(X, n_components=n_components)
+        result = run_nmf(
+            X,
+            n_components=n_components,
+            init=spec["nmf_init"],
+            solver=spec["nmf_solver"],
+            beta_loss=spec["nmf_beta_loss"],
+            max_iter=int(spec["nmf_max_iter"]),
+            tol=float(spec["nmf_tol"]),
+            random_state=int(spec["nmf_random_state"]),
+            alpha_W=float(spec["nmf_alpha_w"]),
+            alpha_H=float(spec["nmf_alpha_h"]),
+            l1_ratio=float(spec["nmf_l1_ratio"]),
+            temperature=float(spec["nmf_temperature"]),
+        )
     else:
         raise ValueError(f"Unknown decomposition method: {method!r}")
 
