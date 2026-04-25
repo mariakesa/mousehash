@@ -6,6 +6,14 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _labels_for_feature_space(feature_space: str) -> list[str] | None:
+    """Return per-class labels for known feature spaces, or None to fall back to indices."""
+    if feature_space == "imagenet_classifier_output":
+        from mousehash.utils.imagenet import load_imagenet_labels
+        return load_imagenet_labels()
+    return None
+
+
 def build_decomposition_report(
     scene_set_id: str,
     representation_spec_id: str,
@@ -23,7 +31,11 @@ def build_decomposition_report(
     from mousehash.artifacts.io import load_json, load_npy
     from mousehash.artifacts.paths import reports_root
     from mousehash.schema.decompositions import DecompositionSpec, StimulusDecomposition
-    from mousehash.schema.representations import AnimateInanimateRule, StimulusRepresentation
+    from mousehash.schema.representations import (
+        AnimateInanimateRule,
+        RepresentationSpec,
+        StimulusRepresentation,
+    )
     from mousehash.schema.stimuli import AllenNaturalSceneImage
     from mousehash.schema.reports import StimulusDecompositionReport
 
@@ -45,6 +57,8 @@ def build_decomposition_report(
 
     decomp = (StimulusDecomposition & decomp_key).fetch1()
     rep = (StimulusRepresentation & rep_key).fetch1()
+    rep_spec = (RepresentationSpec & {"representation_spec_id": representation_spec_id}).fetch1()
+    class_labels = _labels_for_feature_space(rep_spec["feature_space"])
 
     scores = load_npy(Path(decomp["scores_path"]))
     components = load_npy(Path(decomp["components_path"]))
@@ -77,6 +91,7 @@ def build_decomposition_report(
             image_paths=image_paths,
             output_path=report_path,
             title=f"PCA Explorer — {scene_set_id}",
+            class_labels=class_labels,
         )
     elif method == "nmf":
         from mousehash.tools.reports.nmf_html import build_nmf_report
@@ -88,6 +103,7 @@ def build_decomposition_report(
             output_path=report_path,
             reconstruction_err=component_stats.get("reconstruction_err"),
             title=f"NMF Explorer — {scene_set_id}",
+            class_labels=class_labels,
         )
     else:
         raise ValueError(f"No report builder for method: {method!r}")

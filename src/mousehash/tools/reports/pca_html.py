@@ -16,6 +16,7 @@ def build_pca_report(
     image_paths: list[Path],
     output_path: Path,
     title: str = "PCA Explorer",
+    class_labels: list[str] | None = None,
 ) -> None:
     """Generate a self-contained interactive HTML PCA explorer.
 
@@ -85,6 +86,8 @@ def build_pca_report(
     figs.append(fig_scatter)
 
     # 3. Top loading bar charts for each PC
+    use_labels = class_labels is not None
+    x_axis_title = "ImageNet class" if use_labels else "ImageNet class index"
     for pc_idx in range(min(n_components, 5)):
         loadings = components[pc_idx]
         top_pos = np.argsort(loadings)[-10:][::-1]
@@ -92,16 +95,25 @@ def build_pca_report(
         top_idx = np.concatenate([top_pos, top_neg])
         top_vals = loadings[top_idx]
 
+        if use_labels:
+            x_ticks = [class_labels[int(i)] for i in top_idx]
+            hover_lbls = [f"cls {int(i)}: {class_labels[int(i)]}" for i in top_idx]
+        else:
+            x_ticks = [f"cls {int(i)}" for i in top_idx]
+            hover_lbls = x_ticks
+
         fig_load = go.Figure(
             go.Bar(
-                x=[f"cls {i}" for i in top_idx],
+                x=x_ticks,
                 y=top_vals.tolist(),
                 marker_color=["#e06c75" if v > 0 else "#61afef" for v in top_vals],
+                customdata=hover_lbls,
+                hovertemplate="%{customdata}<br>loading=%{y:.3f}<extra></extra>",
             )
         )
         fig_load.update_layout(
             title=f"PC{pc_idx+1} top loadings (pos/neg)",
-            xaxis_title="ImageNet class index",
+            xaxis_title=x_axis_title,
             yaxis_title="Loading",
             template="plotly_dark",
         )

@@ -16,6 +16,7 @@ def build_nmf_report(
     output_path: Path,
     reconstruction_err: float | None = None,
     title: str = "NMF Explorer",
+    class_labels: list[str] | None = None,
 ) -> None:
     """Generate a self-contained interactive HTML NMF explorer.
 
@@ -86,21 +87,32 @@ def build_nmf_report(
     figs.append(fig_heat)
 
     # 3. Top class loadings per component
+    use_labels = class_labels is not None
+    x_axis_title = "ImageNet class" if use_labels else "ImageNet class index"
     for c_idx in range(min(n_components, 5)):
         loadings = components[c_idx]
         top_idx = np.argsort(loadings)[-15:][::-1]
         top_vals = loadings[top_idx]
 
+        if use_labels:
+            x_ticks = [class_labels[int(i)] for i in top_idx]
+            hover_lbls = [f"cls {int(i)}: {class_labels[int(i)]}" for i in top_idx]
+        else:
+            x_ticks = [f"cls {int(i)}" for i in top_idx]
+            hover_lbls = x_ticks
+
         fig_load = go.Figure(
             go.Bar(
-                x=[f"cls {i}" for i in top_idx],
+                x=x_ticks,
                 y=top_vals.tolist(),
                 marker_color="#98c379",
+                customdata=hover_lbls,
+                hovertemplate="%{customdata}<br>loading=%{y:.3f}<extra></extra>",
             )
         )
         fig_load.update_layout(
             title=f"NMF component {c_idx} — top 15 class loadings",
-            xaxis_title="ImageNet class index",
+            xaxis_title=x_axis_title,
             yaxis_title="Loading",
             template="plotly_dark",
         )
