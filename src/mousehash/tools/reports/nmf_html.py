@@ -21,9 +21,9 @@ def build_nmf_report(
     """Generate a self-contained interactive HTML NMF explorer.
 
     The report contains:
-    - Component 0 vs Component 1 scatter colored by animate/inanimate.
+    - Scatter colored by animate/inanimate, with X/Y component dropdowns.
     - Heatmap of all image scores across all components.
-    - Per-component top-10 class loadings (non-negative by construction).
+    - Per-component top-15 class loadings for every component.
 
     Args:
         scores:             (n_images, n_components) NMF activation matrix W.
@@ -43,28 +43,84 @@ def build_nmf_report(
 
     figs: list[go.Figure] = []
 
-    # 1. Component 0 vs 1 scatter
+    # 1. Interactive scatter: pick X / Y component from dropdowns
+    labels_arr = np.array(labels)
+    masks = {label: labels_arr == label for label in color_map}
+    hovers = {label: [hover[i] for i in np.where(masks[label])[0]] for label in color_map}
+    # Per-class scores stacked once: shape (n_components, n_in_class) per label.
+    per_class_scores = {label: scores[masks[label]] for label in color_map}
+
+    init_x, init_y = 0, 1 if n_components > 1 else 0
     fig_scatter = go.Figure()
     for label, marker_color in color_map.items():
-        mask = np.array(labels) == label
         fig_scatter.add_trace(
             go.Scatter(
-                x=scores[mask, 0].tolist(),
-                y=scores[mask, 1].tolist(),
+                x=per_class_scores[label][:, init_x].tolist(),
+                y=per_class_scores[label][:, init_y].tolist(),
                 mode="markers",
                 name=label,
                 marker=dict(color=marker_color, size=8, opacity=0.8),
-                text=[hover[i] for i in np.where(mask)[0]],
-                hovertemplate="%{text}<br>C0=%{x:.3f}, C1=%{y:.3f}<extra></extra>",
+                text=hovers[label],
+                hovertemplate="%{text}<br>x=%{x:.3f}, y=%{y:.3f}<extra></extra>",
             )
         )
+
+    trace_order = list(color_map.keys())  # matches add_trace order above
+    x_buttons = [
+        dict(
+            label=f"C{i}",
+            method="update",
+            args=[
+                {"x": [per_class_scores[lbl][:, i].tolist() for lbl in trace_order]},
+                {"xaxis.title.text": f"Component {i}"},
+            ],
+        )
+        for i in range(n_components)
+    ]
+    y_buttons = [
+        dict(
+            label=f"C{i}",
+            method="update",
+            args=[
+                {"y": [per_class_scores[lbl][:, i].tolist() for lbl in trace_order]},
+                {"yaxis.title.text": f"Component {i}"},
+            ],
+        )
+        for i in range(n_components)
+    ]
+
     subtitle = f" (reconstruction err={reconstruction_err:.4f})" if reconstruction_err else ""
     fig_scatter.update_layout(
-        title=f"NMF component 0 vs 1{subtitle}",
-        xaxis_title="Component 0",
-        yaxis_title="Component 1",
+        title=f"NMF scatter — pick X / Y components{subtitle}",
+        xaxis_title=f"Component {init_x}",
+        yaxis_title=f"Component {init_y}",
         template="plotly_dark",
         legend_title="Category",
+        margin=dict(t=120),
+        updatemenus=[
+            dict(
+                buttons=x_buttons,
+                direction="down",
+                x=0.13, xanchor="left",
+                y=1.16, yanchor="top",
+                active=init_x,
+                showactive=True,
+            ),
+            dict(
+                buttons=y_buttons,
+                direction="down",
+                x=0.33, xanchor="left",
+                y=1.16, yanchor="top",
+                active=init_y,
+                showactive=True,
+            ),
+        ],
+        annotations=[
+            dict(text="X comp:", x=0.07, xref="paper", y=1.14, yref="paper",
+                 showarrow=False, xanchor="right"),
+            dict(text="Y comp:", x=0.27, xref="paper", y=1.14, yref="paper",
+                 showarrow=False, xanchor="right"),
+        ],
     )
     figs.append(fig_scatter)
 
@@ -89,7 +145,7 @@ def build_nmf_report(
     # 3. Top class loadings per component
     use_labels = class_labels is not None
     x_axis_title = "ImageNet class" if use_labels else "ImageNet class index"
-    for c_idx in range(min(n_components, 5)):
+    for c_idx in range(n_components):
         loadings = components[c_idx]
         top_idx = np.argsort(loadings)[-15:][::-1]
         top_vals = loadings[top_idx]
