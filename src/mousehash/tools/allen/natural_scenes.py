@@ -35,30 +35,44 @@ def ingest_natural_scenes(
     Returns:
         Summary dict with keys ``scene_set_id``, ``n_images``, ``image_dir``.
     """
-    from mousehash.tools.allen.stimulus_fetch import fetch_natural_scene_template
+    from mousehash.tools.allen.stimulus_fetch import (
+        fetch_natural_scene_template,
+        save_natural_scene_images,
+    )
     from mousehash.schema.stimuli import AllenNaturalSceneSet, AllenNaturalSceneImage
 
     logger.info("Fetching natural scene template via AllenSDK …")
     template = fetch_natural_scene_template(manifest_path)
-    n_images, height, width = template.shape
-    logger.info("Got %d images (%d × %d px)", n_images, height, width)
+    n_images, raw_height, raw_width = template.shape
+    logger.info("Got %d images (%d × %d px)", n_images, raw_height, raw_width)
 
     image_dir = stimuli_root() / scene_set_id / "images"
     image_dir.mkdir(parents=True, exist_ok=True)
 
+    if not any(image_dir.glob("scene_*.png")):
+        thumb_height, thumb_width = save_natural_scene_images(template, image_dir)
+    else:
+        with Image.open(image_dir / "scene_0000.png") as first_image:
+            thumb_width, thumb_height = first_image.size
+
+    logger.info(
+        "Saved thumbnails at %d × %d px for scene set '%s'.",
+        thumb_width,
+        thumb_height,
+        scene_set_id,
+    )
+
     image_records = []
     for idx in range(n_images):
         img_path = image_dir / f"scene_{idx:04d}.png"
-        if not img_path.exists():
-            Image.fromarray(template[idx], mode="L").save(img_path)
         sha1 = sha1_file(img_path)
         image_records.append(
             dict(
                 scene_set_id=scene_set_id,
                 image_idx=idx,
                 image_path=str(img_path),
-                height=height,
-                width=width,
+                height=thumb_height,
+                width=thumb_width,
                 image_sha1=sha1,
             )
         )
