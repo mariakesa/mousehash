@@ -41,7 +41,6 @@ def make_coordinator(model_id: str = "claude-sonnet-4-6") -> ToolCallingAgent:
                   ``"claude-sonnet-4-6"`` or ``"gpt-4o"``.
                   Requires the corresponding API key in the environment.
     """
-    # Load the default toolcalling prompt templates and patch only system_prompt.
     prompt_templates = yaml.safe_load(
         importlib.resources.files("smolagents.prompts")
         .joinpath("toolcalling_agent.yaml")
@@ -56,3 +55,6 @@ def make_coordinator(model_id: str = "claude-sonnet-4-6") -> ToolCallingAgent:
         prompt_templates=prompt_templates,
         max_steps=12,
     )
+
+
+__all__ = ["SYSTEM_PROMPT", "make_coordinator"]

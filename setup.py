@@ -23,6 +23,7 @@ setup(
     ],
     extras_require={
         "agents": [
+            # Optional runtime adapter for the LLM control surface.
             "smolagents>=1.7.0",
             "gradio>=4.0",
             "click>=8.2",

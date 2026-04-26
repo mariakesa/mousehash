@@ -69,7 +69,9 @@ mousehash/
 │       │
 │       ├── agents/
 │       │   ├── __init__.py
-│       │   └── coordinator.py
+│       │   ├── agent_tools.py
+│       │   ├── smolagents_adapter.py
+│       │   └── tools.py
 │       │
 │       └── utils/
 │           ├── __init__.py
@@ -87,7 +89,7 @@ mousehash/
 └── notebooks/
     └── exploration.ipynb
 
-MouseHash is best understood as a small data-processing system with an AI control surface, not just a model wrapper. The core architecture is: configuration and environment in config.py, persistent metadata in DataJoint schemas like representations.py and decompositions.py, heavy numerical artifacts on disk via paths.py and io.py, pure-ish compute modules in tools/*, and an LLM coordinator in coordinator.py plus tools.py. One practical note: architecture.md looks more like an older intended tree than a faithful description of the current codebase.
+MouseHash is best understood as a small data-processing system with an optional AI control surface, not just a model wrapper. The scientific core is configuration and environment in config.py, persistent metadata in DataJoint schemas like representations.py and decompositions.py, heavy numerical artifacts on disk via paths.py and io.py, and pure-ish compute modules in tools/*. On top of that core, MouseHash is agent-compatible through a smolagents adapter in the agents package, rather than being smolagents-based at its architectural center. One practical note: architecture.md looks more like an older intended tree than a faithful description of the current codebase.
 
 At a structural level, the dominant pattern is a staged materialization pipeline. Ingestion writes stimuli and metadata, representation computes logits and labels, decomposition derives PCA/NMF factors, and reporting turns stored artifacts into HTML. Each stage reads prior outputs, writes new files, then registers the result in a schema table. You can see that most clearly in vit_imagenet.py, compute.py, and build.py. This is close to a pipeline pattern, but with an important twist: the database is not the payload store, it is the state index. DataJoint records mostly point at files on disk rather than embedding arrays directly. That makes the system feel like a hybrid of a workflow engine and a content-addressed artifact store.
 
@@ -97,7 +99,7 @@ A third pattern is pervasive idempotent materialization. Almost every stage chec
 
 The query layer in queries.py adds another design idea: a lightweight read model over the pipeline graph. pipeline_status, format_status, and next_pipeline_step turn low-level table existence into a higher-level state machine. That is similar to CQRS, but much smaller in scope. The write model is the actual stage execution; the read model is a compact projection of completion state. I’d call this “Projection-Oriented Orchestration.”
 
-The AI layer is also architecturally distinct. The coordinator in coordinator.py does not directly implement pipeline logic. Instead, it defines policy in prompt text and delegates capability through tool wrappers in tools.py. That is effectively a “Policy Prompt + Deterministic Tool Substrate” pattern. The language model owns sequencing decisions and user interaction shape; the Python tools own side effects and correctness. This keeps the unsafe part narrow: the agent can choose among tools, but the tools still enforce the real boundaries.
+The AI layer is also architecturally distinct. The smolagents adapter does not directly implement pipeline logic. Instead, it defines policy in prompt text and delegates capability through thin wrappers over framework-neutral callables in agents/agent_tools.py. That is effectively a “Policy Prompt + Deterministic Tool Substrate” pattern. The language model owns sequencing decisions and user interaction shape; the Python tools own side effects and correctness. This keeps the unsafe part narrow: the agent can choose among tools, but the tools still enforce the real boundaries.
 
 There is also a subtle semantic pattern around labels and rules. The animate/inanimate split is not baked into model code. It is represented as a lookup-table rule in representations.py and applied by a tiny transformation in the representation stage. That separates “prediction production” from “semantic interpretation.” I’d call that “Late Semantic Binding”: raw model outputs are preserved, and domain meaning is attached afterward through explicit rules.
 

@@ -51,7 +51,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from mousehash.agents.coordinator import make_coordinator
+    from mousehash.agents.smolagents_adapter import make_coordinator
 
     coordinator = make_coordinator(model_id=args.model)
 
