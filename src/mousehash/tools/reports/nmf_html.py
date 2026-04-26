@@ -18,6 +18,7 @@ def build_nmf_report(
     title: str = "NMF Explorer",
     class_labels: list[str] | None = None,
     image_thumbs: list[str] | None = None,
+    heatmap_thumb_threshold: float = 0.1,
 ) -> None:
     """Generate a self-contained interactive HTML NMF explorer.
 
@@ -130,7 +131,13 @@ def build_nmf_report(
 
     # 2. Score heatmap: images × components
     n_images = scores.shape[0]
-    heat_customdata = [[i] * n_components for i in range(n_images)]
+    heat_customdata = [
+        [
+            image_idx if scores[image_idx, comp_idx] > heatmap_thumb_threshold else None
+            for comp_idx in range(n_components)
+        ]
+        for image_idx in range(n_images)
+    ]
     fig_heat = go.Figure(
         go.Heatmap(
             z=scores.tolist(),
@@ -142,7 +149,10 @@ def build_nmf_report(
         )
     )
     fig_heat.update_layout(
-        title="Image × component activation heatmap",
+        title=(
+            "Image × component activation heatmap"
+            f" (thumbnail threshold > {heatmap_thumb_threshold:g})"
+        ),
         xaxis_title="NMF component",
         yaxis_title="Image index",
         template="plotly_dark",
@@ -198,14 +208,24 @@ def build_nmf_report(
             )
         )
     if image_thumbs is not None:
-        html_parts.append(_hover_thumb_html(image_thumbs, ["nmf-scatter", "nmf-heatmap"]))
+        html_parts.append(
+            _hover_thumb_html(
+                image_thumbs,
+                ["nmf-scatter", "nmf-heatmap"],
+                heatmap_thumb_threshold=heatmap_thumb_threshold,
+            )
+        )
     html_parts.append("</body></html>")
 
     output_path.write_text("\n".join(html_parts), encoding="utf-8")
     logger.info("Wrote NMF report to %s", output_path)
 
 
-def _hover_thumb_html(image_thumbs: list[str], target_ids: list[str]) -> str:
+def _hover_thumb_html(
+    image_thumbs: list[str],
+    target_ids: list[str],
+    heatmap_thumb_threshold: float | None = None,
+) -> str:
     """Floating <img> + Plotly hover handler that swaps it to the hovered image's thumbnail."""
     import json
     return (
@@ -215,9 +235,16 @@ def _hover_thumb_html(image_thumbs: list[str], target_ids: list[str]) -> str:
         "<script>(function(){"
         f"const THUMBS={json.dumps(image_thumbs)};"
         f"const TARGET_IDS={json.dumps(target_ids)};"
+        f"const HEATMAP_THUMB_THRESHOLD={json.dumps(heatmap_thumb_threshold)};"
         "const tip=document.getElementById('hover-thumb');"
+        "function getHeatmapIndex(point){"
+        "if(typeof point.customdata==='number'&&Number.isFinite(point.customdata)){return point.customdata;}"
+        "if(typeof point.y==='string'){const m=point.y.match(/^img (\\d+)$/);if(m){return Number(m[1]);}}"
+        "if(Array.isArray(point.pointNumber)&&typeof point.pointNumber[0]==='number'){return point.pointNumber[0];}"
+        "return null;"
+        "}"
         "function show(evt,idx){"
-        "if(typeof idx!=='number'||idx<0||idx>=THUMBS.length)return;"
+        "if(typeof idx!=='number'||!Number.isFinite(idx)||idx<0||idx>=THUMBS.length){tip.style.display='none';return;}"
         "tip.src=THUMBS[idx];"
         "tip.style.display='block';"
         "const e=evt.event;"
@@ -232,7 +259,11 @@ def _hover_thumb_html(image_thumbs: list[str], target_ids: list[str]) -> str:
         "if(!div||!div.on){console.warn('hover-thumb: no .on on',id);return;}"
         "div.on('plotly_hover',function(evt){"
         "const p=evt.points[0];"
-        "console.debug('hover',id,'cd=',p.customdata,'type=',p.data&&p.data.type);"
+        "if(p.data&&p.data.type==='heatmap'&&typeof HEATMAP_THUMB_THRESHOLD==='number'){"
+        "if(typeof p.z!=='number'||!Number.isFinite(p.z)||p.z<=HEATMAP_THUMB_THRESHOLD){hide();return;}"
+        "show(evt,getHeatmapIndex(p));"
+        "return;"
+        "}"
         "show(evt,p.customdata);"
         "});"
         "div.on('plotly_unhover',hide);"

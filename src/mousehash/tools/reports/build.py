@@ -33,6 +33,7 @@ def build_decomposition_report(
     representation_spec_id: str,
     rule_id: str,
     decomposition_spec_id: str,
+    force: bool = False,
 ) -> dict:
     """Generate an HTML explorer for a stored decomposition and register it in DataJoint.
 
@@ -65,7 +66,7 @@ def build_decomposition_report(
     report_type = f"{method}_explorer"
 
     report_key = dict(**decomp_key, report_type=report_type)
-    if StimulusDecompositionReport & report_key:
+    if (StimulusDecompositionReport & report_key) and not force:
         logger.info("Report already exists for %s, skipping.", decomposition_spec_id)
         return (StimulusDecompositionReport & report_key).fetch1()
 

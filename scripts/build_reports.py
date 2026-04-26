@@ -33,6 +33,11 @@ def main() -> None:
     parser.add_argument("--spec-id", default="vit_b16_imagenet_cpu")
     parser.add_argument("--rule-id", default="imagenet_top1_leq_397")
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Rebuild report HTML even if a report record already exists.",
+    )
+    parser.add_argument(
         "--decomp-spec-ids",
         nargs="+",
         default=DEFAULT_DECOMP_SPECS,
@@ -49,6 +54,7 @@ def main() -> None:
             representation_spec_id=args.spec_id,
             rule_id=args.rule_id,
             decomposition_spec_id=decomp_spec_id,
+            force=args.force,
         )
         print(f"  report_type : {summary['report_type']}")
         print(f"  report_path : {summary['report_path']}")
