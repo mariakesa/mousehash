@@ -3,7 +3,7 @@ from __future__ import annotations
 import datajoint as dj
 
 from mousehash.config import DB_PREFIX
-from mousehash.schema.stimuli import AllenNaturalSceneSet
+from mousehash.schema.stimuli import StimulusSet
 
 schema = dj.Schema(f"{DB_PREFIX}_representations")
 
@@ -36,7 +36,7 @@ class AnimateInanimateRule(dj.Lookup):
 @schema
 class StimulusRepresentation(dj.Manual):
     definition = """
-    -> AllenNaturalSceneSet
+    -> StimulusSet
     -> RepresentationSpec
     -> AnimateInanimateRule
     ---

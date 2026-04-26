@@ -22,8 +22,8 @@ def build_pca_report(
 
     The report contains:
     - Scree plot of explained variance.
-    - PC1 vs PC2 scatter colored by animate/inanimate, with image-path hover.
-    - Per-component top-10 positive and negative class-index loadings (bar chart).
+    - Scatter colored by animate/inanimate, with X/Y component dropdowns.
+    - Per-component top-10 positive and negative class loadings for every PC.
 
     Args:
         scores:                   (n_images, n_components) PCA projections.
@@ -61,34 +61,93 @@ def build_pca_report(
     )
     figs.append(fig_scree)
 
-    # 2. PC1 vs PC2 scatter
+    # 2. Interactive scatter: pick X / Y PC from dropdowns
+    labels_arr = np.array(labels)
+    masks = {label: labels_arr == label for label in color_map}
+    hovers = {label: [hover[i] for i in np.where(masks[label])[0]] for label in color_map}
+    per_class_scores = {label: scores[masks[label]] for label in color_map}
+
+    init_x, init_y = 0, 1 if n_components > 1 else 0
+
+    def pc_axis_title(idx: int) -> str:
+        return f"PC{idx + 1} ({explained_variance_ratio[idx]:.1%} var)"
+
     fig_scatter = go.Figure()
     for label, marker_color in color_map.items():
-        mask = np.array(labels) == label
         fig_scatter.add_trace(
             go.Scatter(
-                x=scores[mask, 0].tolist(),
-                y=scores[mask, 1].tolist(),
+                x=per_class_scores[label][:, init_x].tolist(),
+                y=per_class_scores[label][:, init_y].tolist(),
                 mode="markers",
                 name=label,
                 marker=dict(color=marker_color, size=8, opacity=0.8),
-                text=[hover[i] for i in np.where(mask)[0]],
-                hovertemplate="%{text}<br>PC1=%{x:.2f}, PC2=%{y:.2f}<extra></extra>",
+                text=hovers[label],
+                hovertemplate="%{text}<br>x=%{x:.2f}, y=%{y:.2f}<extra></extra>",
             )
         )
+
+    trace_order = list(color_map.keys())
+    x_buttons = [
+        dict(
+            label=f"PC{i + 1}",
+            method="update",
+            args=[
+                {"x": [per_class_scores[lbl][:, i].tolist() for lbl in trace_order]},
+                {"xaxis.title.text": pc_axis_title(i)},
+            ],
+        )
+        for i in range(n_components)
+    ]
+    y_buttons = [
+        dict(
+            label=f"PC{i + 1}",
+            method="update",
+            args=[
+                {"y": [per_class_scores[lbl][:, i].tolist() for lbl in trace_order]},
+                {"yaxis.title.text": pc_axis_title(i)},
+            ],
+        )
+        for i in range(n_components)
+    ]
+
     fig_scatter.update_layout(
-        title="PC1 vs PC2 (colored by animate/inanimate)",
-        xaxis_title=f"PC1 ({explained_variance_ratio[0]:.1%} var)",
-        yaxis_title=f"PC2 ({explained_variance_ratio[1]:.1%} var)",
+        title="PCA scatter — pick X / Y components (colored by animate/inanimate)",
+        xaxis_title=pc_axis_title(init_x),
+        yaxis_title=pc_axis_title(init_y),
         template="plotly_dark",
         legend_title="Category",
+        margin=dict(t=120),
+        updatemenus=[
+            dict(
+                buttons=x_buttons,
+                direction="down",
+                x=0.13, xanchor="left",
+                y=1.16, yanchor="top",
+                active=init_x,
+                showactive=True,
+            ),
+            dict(
+                buttons=y_buttons,
+                direction="down",
+                x=0.33, xanchor="left",
+                y=1.16, yanchor="top",
+                active=init_y,
+                showactive=True,
+            ),
+        ],
+        annotations=[
+            dict(text="X PC:", x=0.07, xref="paper", y=1.14, yref="paper",
+                 showarrow=False, xanchor="right"),
+            dict(text="Y PC:", x=0.27, xref="paper", y=1.14, yref="paper",
+                 showarrow=False, xanchor="right"),
+        ],
     )
     figs.append(fig_scatter)
 
     # 3. Top loading bar charts for each PC
     use_labels = class_labels is not None
     x_axis_title = "ImageNet class" if use_labels else "ImageNet class index"
-    for pc_idx in range(min(n_components, 5)):
+    for pc_idx in range(n_components):
         loadings = components[pc_idx]
         top_pos = np.argsort(loadings)[-10:][::-1]
         top_neg = np.argsort(loadings)[:10]

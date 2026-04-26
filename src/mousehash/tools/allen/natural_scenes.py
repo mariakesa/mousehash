@@ -39,7 +39,7 @@ def ingest_natural_scenes(
         fetch_natural_scene_template,
         save_natural_scene_images,
     )
-    from mousehash.schema.stimuli import AllenNaturalSceneSet, AllenNaturalSceneImage
+    from mousehash.schema.stimuli import StimulusImage, StimulusSet
 
     logger.info("Fetching natural scene template via AllenSDK …")
     template = fetch_natural_scene_template(manifest_path)
@@ -80,7 +80,7 @@ def ingest_natural_scenes(
             logger.info("  Processed image %d / %d", idx, n_images)
 
     logger.info("Inserting scene-set record into DataJoint …")
-    AllenNaturalSceneSet.insert1(
+    StimulusSet.insert1(
         dict(
             scene_set_id=scene_set_id,
             dataset_name=_DATASET_NAME,
@@ -90,7 +90,7 @@ def ingest_natural_scenes(
         ),
         skip_duplicates=True,
     )
-    AllenNaturalSceneImage.insert(image_records, skip_duplicates=True)
+    StimulusImage.insert(image_records, skip_duplicates=True)
     logger.info(
         "Registered scene set '%s' with %d images.", scene_set_id, n_images
     )

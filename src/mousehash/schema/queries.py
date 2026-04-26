@@ -29,7 +29,7 @@ def pipeline_status(
     from mousehash.schema.decompositions import StimulusDecomposition
     from mousehash.schema.reports import StimulusDecompositionReport
     from mousehash.schema.representations import StimulusRepresentation
-    from mousehash.schema.stimuli import AllenNaturalSceneSet, AllenNaturalSceneImage
+    from mousehash.schema.stimuli import StimulusImage, StimulusSet
 
     scene_set_key = {"scene_set_id": scene_set_id}
     rep_key = dict(
@@ -38,10 +38,10 @@ def pipeline_status(
         rule_id=rule_id,
     )
 
-    ingested = bool(AllenNaturalSceneSet & scene_set_key)
+    ingested = bool(StimulusSet & scene_set_key)
     n_images = None
     if ingested:
-        n_images = len(AllenNaturalSceneImage & scene_set_key)
+        n_images = len(StimulusImage & scene_set_key)
 
     reps_done = bool(StimulusRepresentation & rep_key)
 

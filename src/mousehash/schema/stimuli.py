@@ -36,3 +36,17 @@ class AllenNaturalSceneImage(dj.Manual):
     width=null: int
     image_sha1='': varchar(40)
     """
+
+
+# Generic aliases used by the rest of the pipeline so additional image datasets
+# can target the same downstream interfaces before the physical table migration.
+StimulusSet = AllenNaturalSceneSet
+StimulusImage = AllenNaturalSceneImage
+
+
+def stimulus_set_table() -> type[dj.Manual]:
+    return StimulusSet
+
+
+def stimulus_image_table() -> type[dj.Manual]:
+    return StimulusImage

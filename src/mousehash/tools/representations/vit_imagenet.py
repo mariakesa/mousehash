@@ -64,31 +64,48 @@ def run_vit(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Run ViT ImageNet classifier on a list of image files.
 
-    Loads grayscale image files, stacks them into a raw frame tensor, then
-    delegates to :func:`run_vit_on_frames`.
+    Loads image files and lets the HuggingFace processor handle resizing so
+    mixed-size image datasets can be processed without pre-stacking arrays.
 
     Args:
         image_paths: Ordered list of image files to classify.
         model_name:  HuggingFace model ID.
-        batch_size:  Retained for API compatibility; inference runs per-frame.
+        batch_size:  Number of images per forward pass.
         device:      ``"cpu"`` or ``"cuda"``.
 
     Returns:
         Tuple of ``(logits, probabilities)``, each ``(n_images, n_classes)``
         float32 arrays.
     """
+    import torch
     from PIL import Image
+    from transformers import AutoModelForImageClassification, AutoProcessor
 
-    grayscale_frames = np.stack(
-        [np.array(Image.open(path).convert("L"), dtype=np.uint8) for path in image_paths],
-        axis=0,
-    )
-    return run_vit_on_frames(
-        grayscale_frames,
-        model_name=model_name,
-        batch_size=batch_size,
-        device=device,
-    )
+    processor = AutoProcessor.from_pretrained(model_name)
+    model = AutoModelForImageClassification.from_pretrained(model_name)
+    model = model.to(device)
+    model.eval()
+
+    all_logits: list[np.ndarray] = []
+    for start in range(0, len(image_paths), batch_size):
+        batch_paths = image_paths[start : start + batch_size]
+        images = [Image.open(path).convert("RGB") for path in batch_paths]
+        inputs = processor(images=images, return_tensors="pt")
+        inputs = {key: value.to(device) for key, value in inputs.items()}
+
+        with torch.no_grad():
+            logits = model(**inputs).logits.detach().cpu().numpy()
+
+        all_logits.append(logits.astype(np.float32))
+        logger.info(
+            "  Processed %d / %d images",
+            min(start + batch_size, len(image_paths)),
+            len(image_paths),
+        )
+
+    logits = np.concatenate(all_logits, axis=0)
+    probabilities = softmax(logits, axis=1).astype(np.float32)
+    return logits.astype(np.float32), probabilities
 
 
 def compute_stimulus_representation(
@@ -117,7 +134,7 @@ def compute_stimulus_representation(
         RepresentationSpec,
         StimulusRepresentation,
     )
-    from mousehash.schema.stimuli import AllenNaturalSceneImage
+    from mousehash.schema.stimuli import StimulusImage, StimulusSet
     from mousehash.tools.allen.stimulus_fetch import fetch_natural_scene_template
     from mousehash.tools.representations.animate_inanimate import (
         derive_animate_inanimate,
@@ -138,33 +155,46 @@ def compute_stimulus_representation(
     # --- load spec and rule ---
     spec = (RepresentationSpec & {"representation_spec_id": representation_spec_id}).fetch1()
     rule = (AnimateInanimateRule & {"rule_id": rule_id}).fetch1()
+    stimulus_set = (StimulusSet & {"scene_set_id": scene_set_id}).fetch1()
 
     # --- load ordered image paths from DataJoint for downstream artifacts ---
-    rows = (AllenNaturalSceneImage & {"scene_set_id": scene_set_id}).fetch(
+    rows = (StimulusImage & {"scene_set_id": scene_set_id}).fetch(
         "image_idx", "image_path", as_dict=True, order_by="image_idx"
     )
     image_paths = [Path(r["image_path"]) for r in rows]
-    frames_array = fetch_natural_scene_template(ALLEN_MANIFEST_PATH)
-    if len(frames_array) != len(image_paths):
-        raise ValueError(
-            "Allen stimulus template length does not match ingested scene set: "
-            f"template={len(frames_array)} images, ingested={len(image_paths)} images"
-        )
+
     logger.info(
         "Running ViT on %d images (model=%s, device=%s, batch=%d)",
-        len(frames_array),
+        len(image_paths),
         spec["model_name"],
         spec["device"],
         spec["batch_size"],
     )
 
     # --- ViT inference ---
-    logits, probabilities = run_vit_on_frames(
-        frames_array,
-        model_name=spec["model_name"],
-        batch_size=spec["batch_size"],
-        device=spec["device"],
-    )
+    if (
+        stimulus_set["dataset_name"] == "allen_brain_observatory"
+        and stimulus_set["stimulus_name"] == "natural_scenes"
+    ):
+        frames_array = fetch_natural_scene_template(ALLEN_MANIFEST_PATH)
+        if len(frames_array) != len(image_paths):
+            raise ValueError(
+                "Allen stimulus template length does not match ingested scene set: "
+                f"template={len(frames_array)} images, ingested={len(image_paths)} images"
+            )
+        logits, probabilities = run_vit_on_frames(
+            frames_array,
+            model_name=spec["model_name"],
+            batch_size=spec["batch_size"],
+            device=spec["device"],
+        )
+    else:
+        logits, probabilities = run_vit(
+            image_paths,
+            model_name=spec["model_name"],
+            batch_size=spec["batch_size"],
+            device=spec["device"],
+        )
 
     # --- semantic labels ---
     top1 = derive_top1(probabilities)

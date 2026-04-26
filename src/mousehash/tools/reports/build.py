@@ -36,7 +36,7 @@ def build_decomposition_report(
         RepresentationSpec,
         StimulusRepresentation,
     )
-    from mousehash.schema.stimuli import AllenNaturalSceneImage
+    from mousehash.schema.stimuli import StimulusImage
     from mousehash.schema.reports import StimulusDecompositionReport
 
     rep_key = dict(
@@ -65,7 +65,7 @@ def build_decomposition_report(
     animate_inanimate = load_npy(Path(rep["animate_inanimate_path"]))
     component_stats = load_json(Path(decomp["component_stats_path"]))
 
-    image_rows = (AllenNaturalSceneImage & {"scene_set_id": scene_set_id}).fetch(
+    image_rows = (StimulusImage & {"scene_set_id": scene_set_id}).fetch(
         "image_idx", "image_path", as_dict=True, order_by="image_idx"
     )
     image_paths = [Path(r["image_path"]) for r in image_rows]
