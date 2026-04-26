@@ -14,6 +14,20 @@ def _labels_for_feature_space(feature_space: str) -> list[str] | None:
     return None
 
 
+def _encode_thumbnails(image_paths: list[Path]) -> list[str]:
+    """Read each image and return a list of self-contained base64 data URIs."""
+    import base64
+    import mimetypes
+
+    uris: list[str] = []
+    for p in image_paths:
+        mime, _ = mimetypes.guess_type(p.name)
+        mime = mime or "image/png"
+        b64 = base64.b64encode(p.read_bytes()).decode("ascii")
+        uris.append(f"data:{mime};base64,{b64}")
+    return uris
+
+
 def build_decomposition_report(
     scene_set_id: str,
     representation_spec_id: str,
@@ -69,6 +83,7 @@ def build_decomposition_report(
         "image_idx", "image_path", as_dict=True, order_by="image_idx"
     )
     image_paths = [Path(r["image_path"]) for r in image_rows]
+    image_thumbs = _encode_thumbnails(image_paths)
 
     out_dir = (
         reports_root()
@@ -92,6 +107,7 @@ def build_decomposition_report(
             output_path=report_path,
             title=f"PCA Explorer — {scene_set_id}",
             class_labels=class_labels,
+            image_thumbs=image_thumbs,
         )
     elif method == "nmf":
         from mousehash.tools.reports.nmf_html import build_nmf_report
@@ -104,6 +120,7 @@ def build_decomposition_report(
             reconstruction_err=component_stats.get("reconstruction_err"),
             title=f"NMF Explorer — {scene_set_id}",
             class_labels=class_labels,
+            image_thumbs=image_thumbs,
         )
     else:
         raise ValueError(f"No report builder for method: {method!r}")

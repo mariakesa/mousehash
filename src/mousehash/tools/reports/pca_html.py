@@ -17,6 +17,7 @@ def build_pca_report(
     output_path: Path,
     title: str = "PCA Explorer",
     class_labels: list[str] | None = None,
+    image_thumbs: list[str] | None = None,
 ) -> None:
     """Generate a self-contained interactive HTML PCA explorer.
 
@@ -65,9 +66,11 @@ def build_pca_report(
     labels_arr = np.array(labels)
     masks = {label: labels_arr == label for label in color_map}
     hovers = {label: [hover[i] for i in np.where(masks[label])[0]] for label in color_map}
+    indices = {label: np.where(masks[label])[0].tolist() for label in color_map}
     per_class_scores = {label: scores[masks[label]] for label in color_map}
 
-    init_x, init_y = 0, 1 if n_components > 1 else 0
+    init_x = 0
+    init_y = 1 if n_components > 1 else 0
 
     def pc_axis_title(idx: int) -> str:
         return f"PC{idx + 1} ({explained_variance_ratio[idx]:.1%} var)"
@@ -82,6 +85,7 @@ def build_pca_report(
                 name=label,
                 marker=dict(color=marker_color, size=8, opacity=0.8),
                 text=hovers[label],
+                customdata=indices[label],
                 hovertemplate="%{text}<br>x=%{x:.2f}, y=%{y:.2f}<extra></extra>",
             )
         )
@@ -185,9 +189,20 @@ def build_pca_report(
         "<body style='background:#282c34;color:#abb2bf;font-family:sans-serif;'>",
         f"<h1 style='padding:16px'>{title}</h1>",
     ]
+    scatter_idx = 1  # figs[0] is the scree plot, figs[1] is the scatter
+    div_ids = {scatter_idx: "pca-scatter"} if image_thumbs is not None else {}
     for i, fig in enumerate(figs):
         include_js = i == 0  # embed Plotly JS only once
-        html_parts.append(fig.to_html(full_html=False, include_plotlyjs=include_js))
+        html_parts.append(
+            fig.to_html(
+                full_html=False,
+                include_plotlyjs=include_js,
+                **({"div_id": div_ids[i]} if i in div_ids else {}),
+            )
+        )
+    if image_thumbs is not None:
+        from mousehash.tools.reports.nmf_html import _hover_thumb_html
+        html_parts.append(_hover_thumb_html(image_thumbs, ["pca-scatter"]))
     html_parts.append("</body></html>")
 
     output_path.write_text("\n".join(html_parts), encoding="utf-8")

@@ -17,6 +17,7 @@ def build_nmf_report(
     reconstruction_err: float | None = None,
     title: str = "NMF Explorer",
     class_labels: list[str] | None = None,
+    image_thumbs: list[str] | None = None,
 ) -> None:
     """Generate a self-contained interactive HTML NMF explorer.
 
@@ -47,10 +48,12 @@ def build_nmf_report(
     labels_arr = np.array(labels)
     masks = {label: labels_arr == label for label in color_map}
     hovers = {label: [hover[i] for i in np.where(masks[label])[0]] for label in color_map}
-    # Per-class scores stacked once: shape (n_components, n_in_class) per label.
+    indices = {label: np.where(masks[label])[0].tolist() for label in color_map}
+    # Per-class scores stacked once: shape (n_in_class, n_components) per label.
     per_class_scores = {label: scores[masks[label]] for label in color_map}
 
-    init_x, init_y = 0, 1 if n_components > 1 else 0
+    init_x = 0
+    init_y = 1 if n_components > 1 else 0
     fig_scatter = go.Figure()
     for label, marker_color in color_map.items():
         fig_scatter.add_trace(
@@ -61,6 +64,7 @@ def build_nmf_report(
                 name=label,
                 marker=dict(color=marker_color, size=8, opacity=0.8),
                 text=hovers[label],
+                customdata=indices[label],
                 hovertemplate="%{text}<br>x=%{x:.3f}, y=%{y:.3f}<extra></extra>",
             )
         )
@@ -125,11 +129,14 @@ def build_nmf_report(
     figs.append(fig_scatter)
 
     # 2. Score heatmap: images × components
+    n_images = scores.shape[0]
+    heat_customdata = [[i] * n_components for i in range(n_images)]
     fig_heat = go.Figure(
         go.Heatmap(
             z=scores.tolist(),
             x=[f"C{i}" for i in range(n_components)],
-            y=[f"img {i}" for i in range(scores.shape[0])],
+            y=[f"img {i}" for i in range(n_images)],
+            customdata=heat_customdata,
             colorscale="Viridis",
             hovertemplate="img=%{y}, comp=%{x}<br>score=%{z:.3f}<extra></extra>",
         )
@@ -181,9 +188,54 @@ def build_nmf_report(
         "<body style='background:#282c34;color:#abb2bf;font-family:sans-serif;'>",
         f"<h1 style='padding:16px'>{title}</h1>",
     ]
+    div_ids = {0: "nmf-scatter", 1: "nmf-heatmap"} if image_thumbs is not None else {}
     for i, fig in enumerate(figs):
-        html_parts.append(fig.to_html(full_html=False, include_plotlyjs=(i == 0)))
+        html_parts.append(
+            fig.to_html(
+                full_html=False,
+                include_plotlyjs=(i == 0),
+                **({"div_id": div_ids[i]} if i in div_ids else {}),
+            )
+        )
+    if image_thumbs is not None:
+        html_parts.append(_hover_thumb_html(image_thumbs, ["nmf-scatter", "nmf-heatmap"]))
     html_parts.append("</body></html>")
 
     output_path.write_text("\n".join(html_parts), encoding="utf-8")
     logger.info("Wrote NMF report to %s", output_path)
+
+
+def _hover_thumb_html(image_thumbs: list[str], target_ids: list[str]) -> str:
+    """Floating <img> + Plotly hover handler that swaps it to the hovered image's thumbnail."""
+    import json
+    return (
+        "<img id=\"hover-thumb\" alt=\"\" "
+        "style=\"position:fixed;display:none;pointer-events:none;"
+        "border:1px solid #abb2bf;background:#000;z-index:9999;max-width:240px;\">"
+        "<script>(function(){"
+        f"const THUMBS={json.dumps(image_thumbs)};"
+        f"const TARGET_IDS={json.dumps(target_ids)};"
+        "const tip=document.getElementById('hover-thumb');"
+        "function show(evt,idx){"
+        "if(typeof idx!=='number'||idx<0||idx>=THUMBS.length)return;"
+        "tip.src=THUMBS[idx];"
+        "tip.style.display='block';"
+        "const e=evt.event;"
+        "const cx=(e&&e.clientX!=null)?e.clientX:0;"
+        "const cy=(e&&e.clientY!=null)?e.clientY:0;"
+        "tip.style.left=(cx+14)+'px';"
+        "tip.style.top=(cy+14)+'px';"
+        "}"
+        "function hide(){tip.style.display='none';}"
+        "TARGET_IDS.forEach(function(id){"
+        "const div=document.getElementById(id);"
+        "if(!div||!div.on){console.warn('hover-thumb: no .on on',id);return;}"
+        "div.on('plotly_hover',function(evt){"
+        "const p=evt.points[0];"
+        "console.debug('hover',id,'cd=',p.customdata,'type=',p.data&&p.data.type);"
+        "show(evt,p.customdata);"
+        "});"
+        "div.on('plotly_unhover',hide);"
+        "});"
+        "})();</script>"
+    )
