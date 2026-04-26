@@ -18,7 +18,7 @@ def build_nmf_report(
     title: str = "NMF Explorer",
     class_labels: list[str] | None = None,
     image_thumbs: list[str] | None = None,
-    heatmap_thumb_threshold: float = 0.1,
+    heatmap_thumb_threshold: float = 0.01,
 ) -> None:
     """Generate a self-contained interactive HTML NMF explorer.
 
@@ -38,6 +38,7 @@ def build_nmf_report(
     """
     import plotly.graph_objects as go
 
+    heatmap_thumb_max_images = 8
     n_components = scores.shape[1]
     labels = ["animate" if a else "inanimate" for a in animate_inanimate]
     color_map = {"animate": "#e06c75", "inanimate": "#61afef"}
@@ -131,19 +132,16 @@ def build_nmf_report(
 
     # 2. Score heatmap: images × components
     n_images = scores.shape[0]
-    heat_customdata = [
-        [
-            image_idx if scores[image_idx, comp_idx] > heatmap_thumb_threshold else None
-            for comp_idx in range(n_components)
-        ]
-        for image_idx in range(n_images)
-    ]
+    heat_component_indices = []
+    for comp_idx in range(n_components):
+        active_idx = np.flatnonzero(scores[:, comp_idx] > heatmap_thumb_threshold)
+        ranked_idx = active_idx[np.argsort(scores[active_idx, comp_idx])[::-1]]
+        heat_component_indices.append(ranked_idx[:heatmap_thumb_max_images].tolist())
     fig_heat = go.Figure(
         go.Heatmap(
             z=scores.tolist(),
             x=[f"C{i}" for i in range(n_components)],
             y=[f"img {i}" for i in range(n_images)],
-            customdata=heat_customdata,
             colorscale="Viridis",
             hovertemplate="img=%{y}, comp=%{x}<br>score=%{z:.3f}<extra></extra>",
         )
@@ -151,7 +149,7 @@ def build_nmf_report(
     fig_heat.update_layout(
         title=(
             "Image × component activation heatmap"
-            f" (thumbnail threshold > {heatmap_thumb_threshold:g})"
+            f" (thumbnail tile threshold > {heatmap_thumb_threshold:g}, max {heatmap_thumb_max_images})"
         ),
         xaxis_title="NMF component",
         yaxis_title="Image index",
@@ -213,6 +211,8 @@ def build_nmf_report(
                 image_thumbs,
                 ["nmf-scatter", "nmf-heatmap"],
                 heatmap_thumb_threshold=heatmap_thumb_threshold,
+                heatmap_component_indices=heat_component_indices,
+                heatmap_thumb_max_images=heatmap_thumb_max_images,
             )
         )
     html_parts.append("</body></html>")
@@ -225,43 +225,72 @@ def _hover_thumb_html(
     image_thumbs: list[str],
     target_ids: list[str],
     heatmap_thumb_threshold: float | None = None,
+    heatmap_component_indices: list[list[int]] | None = None,
+    heatmap_thumb_max_images: int | None = None,
 ) -> str:
-    """Floating <img> + Plotly hover handler that swaps it to the hovered image's thumbnail."""
+    """Hover helpers for single-image scatter hovers and NMF heatmap thumbnail tiles."""
     import json
     return (
         "<img id=\"hover-thumb\" alt=\"\" "
         "style=\"position:fixed;display:none;pointer-events:none;"
         "border:1px solid #abb2bf;background:#000;z-index:9999;max-width:240px;\">"
+        "<div id=\"hover-thumb-grid\" "
+        "style=\"position:fixed;display:none;pointer-events:none;padding:10px;"
+        "border:1px solid #abb2bf;background:rgba(0,0,0,0.92);z-index:9999;"
+        "max-width:360px;max-height:260px;overflow:auto;box-shadow:0 10px 24px rgba(0,0,0,0.35);\">"
+        "<div id=\"hover-thumb-grid-title\" style=\"margin:0 0 8px 0;font:600 12px sans-serif;color:#abb2bf;\"></div>"
+        "<div id=\"hover-thumb-grid-body\" "
+        "style=\"display:grid;grid-template-columns:repeat(4,minmax(0,72px));gap:6px;\"></div>"
+        "</div>"
         "<script>(function(){"
         f"const THUMBS={json.dumps(image_thumbs)};"
         f"const TARGET_IDS={json.dumps(target_ids)};"
         f"const HEATMAP_THUMB_THRESHOLD={json.dumps(heatmap_thumb_threshold)};"
+        f"const HEATMAP_COMPONENT_INDICES={json.dumps(heatmap_component_indices)};"
+        f"const HEATMAP_THUMB_MAX_IMAGES={json.dumps(heatmap_thumb_max_images)};"
         "const tip=document.getElementById('hover-thumb');"
-        "function getHeatmapIndex(point){"
-        "if(typeof point.customdata==='number'&&Number.isFinite(point.customdata)){return point.customdata;}"
-        "if(typeof point.y==='string'){const m=point.y.match(/^img (\\d+)$/);if(m){return Number(m[1]);}}"
-        "if(Array.isArray(point.pointNumber)&&typeof point.pointNumber[0]==='number'){return point.pointNumber[0];}"
+        "const grid=document.getElementById('hover-thumb-grid');"
+        "const gridTitle=document.getElementById('hover-thumb-grid-title');"
+        "const gridBody=document.getElementById('hover-thumb-grid-body');"
+        "function getHeatmapComponentIndex(point){"
+        "if(typeof point.x==='string'){const m=point.x.match(/^C(\\d+)$/);if(m){return Number(m[1]);}}"
+        "if(Array.isArray(point.pointNumber)&&typeof point.pointNumber[1]==='number'){return point.pointNumber[1];}"
         "return null;"
         "}"
-        "function show(evt,idx){"
-        "if(typeof idx!=='number'||!Number.isFinite(idx)||idx<0||idx>=THUMBS.length){tip.style.display='none';return;}"
-        "tip.src=THUMBS[idx];"
-        "tip.style.display='block';"
+        "function position(el,evt){"
         "const e=evt.event;"
         "const cx=(e&&e.clientX!=null)?e.clientX:0;"
         "const cy=(e&&e.clientY!=null)?e.clientY:0;"
-        "tip.style.left=(cx+14)+'px';"
-        "tip.style.top=(cy+14)+'px';"
+        "el.style.left=(cx+14)+'px';"
+        "el.style.top=(cy+14)+'px';"
         "}"
-        "function hide(){tip.style.display='none';}"
+        "function show(evt,idx){"
+        "if(typeof idx!=='number'||!Number.isFinite(idx)||idx<0||idx>=THUMBS.length){tip.style.display='none';return;}"
+        "grid.style.display='none';"
+        "tip.src=THUMBS[idx];"
+        "tip.style.display='block';"
+        "position(tip,evt);"
+        "}"
+        "function showGrid(evt,compIdx,indices){"
+        "tip.style.display='none';"
+        "if(!Array.isArray(indices)||indices.length===0){grid.style.display='none';return;}"
+        "gridTitle.textContent='Component C'+compIdx+' thumbnails (score > '+HEATMAP_THUMB_THRESHOLD+', max '+HEATMAP_THUMB_MAX_IMAGES+')';"
+        "gridBody.innerHTML=indices.map(function(idx){"
+        "if(typeof idx!=='number'||!Number.isFinite(idx)||idx<0||idx>=THUMBS.length){return '';}"
+        "return '<img src=\"'+THUMBS[idx]+'\" alt=\"img '+idx+'\" title=\"img '+idx+'\" style=\"display:block;width:72px;height:auto;border:1px solid #4b5263;background:#111;\">';"
+        "}).join('');"
+        "if(!gridBody.innerHTML){grid.style.display='none';return;}"
+        "grid.style.display='block';"
+        "position(grid,evt);"
+        "}"
+        "function hide(){tip.style.display='none';grid.style.display='none';}"
         "TARGET_IDS.forEach(function(id){"
         "const div=document.getElementById(id);"
         "if(!div||!div.on){console.warn('hover-thumb: no .on on',id);return;}"
         "div.on('plotly_hover',function(evt){"
         "const p=evt.points[0];"
-        "if(p.data&&p.data.type==='heatmap'&&typeof HEATMAP_THUMB_THRESHOLD==='number'){"
-        "if(typeof p.z!=='number'||!Number.isFinite(p.z)||p.z<=HEATMAP_THUMB_THRESHOLD){hide();return;}"
-        "show(evt,getHeatmapIndex(p));"
+        "if(p.data&&p.data.type==='heatmap'&&Array.isArray(HEATMAP_COMPONENT_INDICES)){"
+        "showGrid(evt,getHeatmapComponentIndex(p),HEATMAP_COMPONENT_INDICES[getHeatmapComponentIndex(p)]);"
         "return;"
         "}"
         "show(evt,p.customdata);"
