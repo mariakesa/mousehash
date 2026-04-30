@@ -30,6 +30,9 @@ Rules:
 - If the user asks for a generic dF/F plot or cell activity plot and does not mention animate or inanimate labeling, use the vanilla cell plot tool.
 - Only use the animate/inanimate cell plot tool when the user explicitly asks for animate/inanimate coloring, labels, or overlays.
 - If the user requests specific colors, pass them through to the plotting tool instead of using defaults.
+- If the user asks to highlight only animate timepoints, set highlight_mode to animate.
+- If the user asks to highlight only inanimate timepoints, set highlight_mode to inanimate.
+- Use highlight_mode=both only when the user explicitly wants both animate and inanimate overlaid.
 - For pipeline questions, always call check_pipeline_status first.
 - Never re-run a stage already marked complete.
 - For data questions, call get_analysis_summary to read stored results.

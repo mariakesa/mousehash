@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from mousehash.tools.allen.cell_activity import (
+    _highlight_masks,
     build_cell_dff_plot,
     build_cell_dff_matplotlib_plot,
     build_timepoint_scene_labels,
@@ -144,3 +145,19 @@ def test_slice_trace_time_range_rejects_invalid_bounds() -> None:
         assert "time_end_s must be greater" in str(exc)
     else:
         raise AssertionError("Expected ValueError for invalid time bounds")
+
+
+def test_highlight_masks_animate_only_hides_inanimate_overlay() -> None:
+    masks = _highlight_masks(np.array([-1, 0, 1, 1, 0], dtype=np.int8), "animate")
+
+    assert masks["animate"].tolist() == [False, False, True, True, False]
+    assert masks["inanimate"].tolist() == [False, False, False, False, False]
+    assert masks["context"].tolist() == [True, True, False, False, True]
+
+
+def test_highlight_masks_inanimate_only_hides_animate_overlay() -> None:
+    masks = _highlight_masks(np.array([-1, 0, 1, 1, 0], dtype=np.int8), "inanimate")
+
+    assert masks["animate"].tolist() == [False, False, False, False, False]
+    assert masks["inanimate"].tolist() == [False, True, False, False, True]
+    assert masks["context"].tolist() == [True, False, True, True, False]

@@ -92,6 +92,7 @@ def plot_cell_natural_scenes_dff(
     animate_color: str = "#1f77b4",
     inanimate_color: str = "#ff7f0e",
     context_color: str = "#b0b7c3",
+    highlight_mode: str = "both",
 ) -> str:
     """Plot one cell's dF/F trace with animate/inanimate natural-scene overlays.
 
@@ -113,6 +114,7 @@ def plot_cell_natural_scenes_dff(
         animate_color: Color for animate timepoints.
         inanimate_color: Color for inanimate timepoints.
         context_color: Color for non-natural-scene/background timepoints.
+        highlight_mode: Which semantic class to color: both, animate, or inanimate.
     """
     from pathlib import Path
 
@@ -137,12 +139,14 @@ def plot_cell_natural_scenes_dff(
         animate_color=animate_color,
         inanimate_color=inanimate_color,
         context_color=context_color,
+        highlight_mode=highlight_mode,
     )
     return (
         f"Cell plot complete. cell_specimen_id={summary['cell_specimen_id']}, "
         f"experiment_id={summary['experiment_id']}, "
         f"time_start_s={summary['time_start_s']}, "
         f"time_end_s={summary['time_end_s']}, "
+        f"highlight_mode={summary['highlight_mode']}, "
         f"animate_color={summary['animate_color']}, "
         f"inanimate_color={summary['inanimate_color']}, "
         f"animate_timepoints={summary['n_animate_timepoints']}, "

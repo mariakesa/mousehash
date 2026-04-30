@@ -27,6 +27,51 @@ CONTEXT_COLOR = "#b0b7c3"
 VANILLA_COLOR = "#2f4858"
 
 
+def _normalize_highlight_mode(highlight_mode: str) -> str:
+    normalized = str(highlight_mode).strip().lower()
+    if normalized not in {"both", "animate", "inanimate"}:
+        raise ValueError(
+            "highlight_mode must be one of: both, animate, inanimate"
+        )
+    return normalized
+
+
+def _highlight_masks(
+    timepoint_labels: np.ndarray,
+    highlight_mode: str,
+) -> dict[str, np.ndarray]:
+    highlight_mode = _normalize_highlight_mode(highlight_mode)
+    animate_mask = timepoint_labels == 1
+    inanimate_mask = timepoint_labels == 0
+    outside_mask = timepoint_labels < 0
+
+    if highlight_mode == "both":
+        context_mask = outside_mask
+        return {
+            "animate": animate_mask,
+            "inanimate": inanimate_mask,
+            "context": context_mask,
+            "highlight_mode": highlight_mode,
+        }
+
+    if highlight_mode == "animate":
+        context_mask = ~animate_mask
+        return {
+            "animate": animate_mask,
+            "inanimate": np.zeros_like(inanimate_mask, dtype=bool),
+            "context": context_mask,
+            "highlight_mode": highlight_mode,
+        }
+
+    context_mask = ~inanimate_mask
+    return {
+        "animate": np.zeros_like(animate_mask, dtype=bool),
+        "inanimate": inanimate_mask,
+        "context": context_mask,
+        "highlight_mode": highlight_mode,
+    }
+
+
 def slice_trace_time_range(
     timestamps: np.ndarray,
     dff_trace: np.ndarray,
@@ -365,6 +410,7 @@ def build_cell_dff_animate_inanimate_plot(
     animate_color: str = ANIMATE_COLOR,
     inanimate_color: str = INANIMATE_COLOR,
     context_color: str = CONTEXT_COLOR,
+    highlight_mode: str = "both",
 ) -> Path:
     timestamps = np.asarray(timestamps, dtype=np.float64)
     dff_trace = np.asarray(dff_trace, dtype=np.float32)
@@ -373,9 +419,10 @@ def build_cell_dff_animate_inanimate_plot(
     if not (len(timestamps) == len(dff_trace) == len(timepoint_labels)):
         raise ValueError("timestamps, dff_trace, and timepoint_labels must have the same length")
 
-    animate_mask = timepoint_labels == 1
-    inanimate_mask = timepoint_labels == 0
-    context_mask = timepoint_labels < 0
+    masks = _highlight_masks(timepoint_labels, highlight_mode)
+    animate_mask = masks["animate"]
+    inanimate_mask = masks["inanimate"]
+    context_mask = masks["context"]
 
     def masked(values: np.ndarray, mask: np.ndarray) -> np.ndarray:
         return np.where(mask, values, np.nan)
@@ -386,29 +433,31 @@ def build_cell_dff_animate_inanimate_plot(
             x=timestamps,
             y=masked(dff_trace, context_mask),
             mode="lines",
-            name="outside natural scenes",
+            name="background / non-highlighted",
             line={"color": context_color, "width": 1},
             opacity=0.45,
         )
     )
-    figure.add_trace(
-        go.Scatter(
-            x=timestamps,
-            y=masked(dff_trace, inanimate_mask),
-            mode="lines",
-            name="inanimate scene",
-            line={"color": inanimate_color, "width": 2},
+    if np.any(inanimate_mask):
+        figure.add_trace(
+            go.Scatter(
+                x=timestamps,
+                y=masked(dff_trace, inanimate_mask),
+                mode="lines",
+                name="inanimate scene",
+                line={"color": inanimate_color, "width": 2},
+            )
         )
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=timestamps,
-            y=masked(dff_trace, animate_mask),
-            mode="lines",
-            name="animate scene",
-            line={"color": animate_color, "width": 2},
+    if np.any(animate_mask):
+        figure.add_trace(
+            go.Scatter(
+                x=timestamps,
+                y=masked(dff_trace, animate_mask),
+                mode="lines",
+                name="animate scene",
+                line={"color": animate_color, "width": 2},
+            )
         )
-    )
     figure.update_layout(
         title=title,
         template="plotly_white",
@@ -433,6 +482,7 @@ def build_cell_dff_animate_inanimate_matplotlib_plot(
     animate_color: str = ANIMATE_COLOR,
     inanimate_color: str = INANIMATE_COLOR,
     context_color: str = CONTEXT_COLOR,
+    highlight_mode: str = "both",
 ) -> Path:
     import matplotlib
 
@@ -446,32 +496,36 @@ def build_cell_dff_animate_inanimate_matplotlib_plot(
     if not (len(timestamps) == len(dff_trace) == len(timepoint_labels)):
         raise ValueError("timestamps, dff_trace, and timepoint_labels must have the same length")
 
+    masks = _highlight_masks(timepoint_labels, highlight_mode)
+
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(10, 4.5), dpi=140)
     ax.plot(
         timestamps,
-        np.where(timepoint_labels < 0, dff_trace, np.nan),
+        np.where(masks["context"], dff_trace, np.nan),
         color=context_color,
         linewidth=0.8,
         alpha=0.6,
-        label="outside natural scenes",
+        label="background / non-highlighted",
     )
-    ax.plot(
-        timestamps,
-        np.where(timepoint_labels == 0, dff_trace, np.nan),
-        color=inanimate_color,
-        linewidth=1.6,
-        label="inanimate scene",
-    )
-    ax.plot(
-        timestamps,
-        np.where(timepoint_labels == 1, dff_trace, np.nan),
-        color=animate_color,
-        linewidth=1.6,
-        label="animate scene",
-    )
+    if np.any(masks["inanimate"]):
+        ax.plot(
+            timestamps,
+            np.where(masks["inanimate"], dff_trace, np.nan),
+            color=inanimate_color,
+            linewidth=1.6,
+            label="inanimate scene",
+        )
+    if np.any(masks["animate"]):
+        ax.plot(
+            timestamps,
+            np.where(masks["animate"], dff_trace, np.nan),
+            color=animate_color,
+            linewidth=1.6,
+            label="animate scene",
+        )
     ax.set_title(title)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("dF/F")
@@ -499,7 +553,9 @@ def analyze_cell_dff_against_animate_inanimate(
     animate_color: str = ANIMATE_COLOR,
     inanimate_color: str = INANIMATE_COLOR,
     context_color: str = CONTEXT_COLOR,
+    highlight_mode: str = "both",
 ) -> dict:
+    highlight_mode = _normalize_highlight_mode(highlight_mode)
     trace_data = fetch_cell_natural_scenes_trace(manifest_path, cell_specimen_id)
     label_data = load_or_compute_natural_scene_animate_inanimate_labels(
         manifest_path=manifest_path,
@@ -538,12 +594,12 @@ def analyze_cell_dff_against_animate_inanimate(
         timepoint_labels=sliced["timepoint_labels"],
         output_path=Path(output_path),
         title=(
-            f"Cell {int(cell_specimen_id)} dF/F during natural scenes "
-            "(blue=animate, orange=inanimate)"
+            f"Cell {int(cell_specimen_id)} dF/F during natural scenes"
         ),
         animate_color=animate_color,
         inanimate_color=inanimate_color,
         context_color=context_color,
+        highlight_mode=highlight_mode,
     )
     png_plot_path = build_cell_dff_animate_inanimate_matplotlib_plot(
         timestamps=sliced["timestamps"],
@@ -551,12 +607,12 @@ def analyze_cell_dff_against_animate_inanimate(
         timepoint_labels=sliced["timepoint_labels"],
         output_path=png_output_path,
         title=(
-            f"Cell {int(cell_specimen_id)} dF/F during natural scenes "
-            "(blue=animate, orange=inanimate)"
+            f"Cell {int(cell_specimen_id)} dF/F during natural scenes"
         ),
         animate_color=animate_color,
         inanimate_color=inanimate_color,
         context_color=context_color,
+        highlight_mode=highlight_mode,
     )
 
     assert sliced["timepoint_labels"] is not None
@@ -585,6 +641,7 @@ def analyze_cell_dff_against_animate_inanimate(
         "animate_color": animate_color,
         "inanimate_color": inanimate_color,
         "context_color": context_color,
+        "highlight_mode": highlight_mode,
     }
 
 
