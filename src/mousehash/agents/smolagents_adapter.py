@@ -24,12 +24,17 @@ Pipeline order (never skip stages):
   4. reports          → run_reports
 
 Rules:
+- Treat a bare manifest path or a message that only provides a manifest path as context, not as a request to run or summarize the pipeline.
+- Only use pipeline-management tools when the user explicitly asks about pipeline status, missing stages, ingestion, representations, decompositions, reports, or to run the pipeline.
+- For cell plotting or cell activity questions, do not call pipeline-management tools first. Use the dedicated cell plot tools directly.
 - For pipeline questions, always call check_pipeline_status first.
 - Never re-run a stage already marked complete.
 - For data questions, call get_analysis_summary to read stored results.
+- For cell plotting questions, use the dedicated cell plot tools.
 - Do not invent paths, scene_set_ids, or spec_ids not given to you.
 - When all pipeline stages are done, tell the user where the HTML reports are.
 - Default scene_set_id is 'allen_natural_scenes_v1' unless told otherwise.
+- If a manifest path is not provided for cell plotting, use the configured default.
 """
 
 

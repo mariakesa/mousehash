@@ -80,6 +80,92 @@ def run_representations(
     )
 
 
+def plot_cell_natural_scenes_dff(
+    manifest_path: str | None,
+    cell_specimen_id: int,
+    model_name: str = "google/vit-base-patch16-224",
+    batch_size: int = 16,
+    device: str = "cpu",
+    threshold_max_class_idx: int = 397,
+) -> str:
+    """Plot one cell's dF/F trace with animate/inanimate natural-scene overlays.
+
+    Looks up a natural-scenes ophys experiment for the given cell, loads its
+    dF/F trace, classifies the Allen natural-scene images on the
+    animate/inanimate axis, aligns those labels to stimulus presentation
+    intervals, and writes an interactive HTML plot.
+
+    Args:
+        manifest_path: Absolute path to the Allen BrainObservatoryCache manifest.
+            If omitted, uses the configured ALLEN_DATA path.
+        cell_specimen_id: Allen cell specimen identifier to fetch.
+        model_name: HuggingFace image-classification model used for scene labels.
+        batch_size: Batch size forwarded to the scene classifier helper.
+        device: Torch device for scene classification, e.g. cpu or cuda.
+        threshold_max_class_idx: Top-1 ImageNet index cutoff for animate vs inanimate.
+    """
+    from pathlib import Path
+
+    from mousehash.config import ALLEN_MANIFEST_PATH
+    from mousehash.tools.allen.cell_activity import (
+        analyze_cell_dff_against_animate_inanimate,
+    )
+
+    resolved_manifest_path = (
+        ALLEN_MANIFEST_PATH if manifest_path is None or not str(manifest_path).strip() else Path(manifest_path)
+    )
+
+    summary = analyze_cell_dff_against_animate_inanimate(
+        manifest_path=resolved_manifest_path,
+        cell_specimen_id=int(cell_specimen_id),
+        model_name=model_name,
+        batch_size=int(batch_size),
+        device=device,
+        threshold_max_class_idx=int(threshold_max_class_idx),
+    )
+    return (
+        f"Cell plot complete. cell_specimen_id={summary['cell_specimen_id']}, "
+        f"experiment_id={summary['experiment_id']}, "
+        f"animate_timepoints={summary['n_animate_timepoints']}, "
+        f"inanimate_timepoints={summary['n_inanimate_timepoints']}, "
+        f"plot={summary['plot_path']}, "
+        f"plot_png={summary['plot_png_path']}"
+    )
+
+
+def plot_cell_natural_scenes_dff_vanilla(
+    manifest_path: str | None,
+    cell_specimen_id: int,
+) -> str:
+    """Plot one cell's dF/F trace without animate/inanimate overlay labels.
+
+    Args:
+        manifest_path: Absolute path to the Allen BrainObservatoryCache manifest.
+            If omitted, uses the configured ALLEN_DATA path.
+        cell_specimen_id: Allen cell specimen identifier to fetch.
+    """
+    from pathlib import Path
+
+    from mousehash.config import ALLEN_MANIFEST_PATH
+    from mousehash.tools.allen.cell_activity import analyze_cell_dff_vanilla
+
+    resolved_manifest_path = (
+        ALLEN_MANIFEST_PATH if manifest_path is None or not str(manifest_path).strip() else Path(manifest_path)
+    )
+
+    summary = analyze_cell_dff_vanilla(
+        manifest_path=resolved_manifest_path,
+        cell_specimen_id=int(cell_specimen_id),
+    )
+    return (
+        f"Vanilla cell plot complete. cell_specimen_id={summary['cell_specimen_id']}, "
+        f"experiment_id={summary['experiment_id']}, "
+        f"n_timepoints={summary['n_timepoints']}, "
+        f"plot={summary['plot_path']}, "
+        f"plot_png={summary['plot_png_path']}"
+    )
+
+
 def run_decompositions(
     scene_set_id: str,
     representation_spec_id: str = DEFAULT_SPEC_ID,

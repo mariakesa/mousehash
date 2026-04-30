@@ -5,6 +5,8 @@ from smolagents import tool
 from mousehash.agents.agent_tools import (
     check_pipeline_status as _check_pipeline_status,
     get_analysis_summary as _get_analysis_summary,
+    plot_cell_natural_scenes_dff as _plot_cell_natural_scenes_dff,
+    plot_cell_natural_scenes_dff_vanilla as _plot_cell_natural_scenes_dff_vanilla,
     run_decompositions as _run_decompositions,
     run_ingestion as _run_ingestion,
     run_nmf_at_temperature as _run_nmf_at_temperature,
@@ -14,6 +16,8 @@ from mousehash.agents.agent_tools import (
 
 check_pipeline_status = tool(_check_pipeline_status)
 get_analysis_summary = tool(_get_analysis_summary)
+plot_cell_natural_scenes_dff = tool(_plot_cell_natural_scenes_dff)
+plot_cell_natural_scenes_dff_vanilla = tool(_plot_cell_natural_scenes_dff_vanilla)
 run_ingestion = tool(_run_ingestion)
 run_representations = tool(_run_representations)
 run_decompositions = tool(_run_decompositions)
@@ -23,6 +27,8 @@ run_reports = tool(_run_reports)
 ALL_TOOLS = [
     check_pipeline_status,
     get_analysis_summary,
+    plot_cell_natural_scenes_dff,
+    plot_cell_natural_scenes_dff_vanilla,
     run_ingestion,
     run_representations,
     run_decompositions,
@@ -34,6 +40,8 @@ __all__ = [
     "ALL_TOOLS",
     "check_pipeline_status",
     "get_analysis_summary",
+    "plot_cell_natural_scenes_dff",
+    "plot_cell_natural_scenes_dff_vanilla",
     "run_ingestion",
     "run_representations",
     "run_decompositions",
