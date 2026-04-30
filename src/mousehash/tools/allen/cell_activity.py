@@ -27,6 +27,40 @@ CONTEXT_COLOR = "#b0b7c3"
 VANILLA_COLOR = "#2f4858"
 
 
+def slice_trace_time_range(
+    timestamps: np.ndarray,
+    dff_trace: np.ndarray,
+    *,
+    time_start_s: float | None = None,
+    time_end_s: float | None = None,
+    timepoint_labels: np.ndarray | None = None,
+) -> dict:
+    timestamps = np.asarray(timestamps, dtype=np.float64)
+    dff_trace = np.asarray(dff_trace, dtype=np.float32)
+
+    if len(timestamps) != len(dff_trace):
+        raise ValueError("timestamps and dff_trace must have the same length")
+    if timepoint_labels is not None and len(timepoint_labels) != len(timestamps):
+        raise ValueError("timepoint_labels must have the same length as timestamps")
+    if time_start_s is not None and time_end_s is not None and float(time_end_s) <= float(time_start_s):
+        raise ValueError("time_end_s must be greater than time_start_s")
+
+    mask = np.ones(len(timestamps), dtype=bool)
+    if time_start_s is not None:
+        mask &= timestamps >= float(time_start_s)
+    if time_end_s is not None:
+        mask &= timestamps <= float(time_end_s)
+
+    sliced_labels = None if timepoint_labels is None else np.asarray(timepoint_labels, dtype=np.int8)[mask]
+    return {
+        "timestamps": timestamps[mask],
+        "dff_trace": dff_trace[mask],
+        "timepoint_labels": sliced_labels,
+        "time_start_s": None if time_start_s is None else float(time_start_s),
+        "time_end_s": None if time_end_s is None else float(time_end_s),
+    }
+
+
 def _slugify_cache_component(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("_") or "default"
 
@@ -328,6 +362,9 @@ def build_cell_dff_animate_inanimate_plot(
     output_path: Path,
     *,
     title: str,
+    animate_color: str = ANIMATE_COLOR,
+    inanimate_color: str = INANIMATE_COLOR,
+    context_color: str = CONTEXT_COLOR,
 ) -> Path:
     timestamps = np.asarray(timestamps, dtype=np.float64)
     dff_trace = np.asarray(dff_trace, dtype=np.float32)
@@ -350,7 +387,7 @@ def build_cell_dff_animate_inanimate_plot(
             y=masked(dff_trace, context_mask),
             mode="lines",
             name="outside natural scenes",
-            line={"color": CONTEXT_COLOR, "width": 1},
+            line={"color": context_color, "width": 1},
             opacity=0.45,
         )
     )
@@ -360,7 +397,7 @@ def build_cell_dff_animate_inanimate_plot(
             y=masked(dff_trace, inanimate_mask),
             mode="lines",
             name="inanimate scene",
-            line={"color": INANIMATE_COLOR, "width": 2},
+            line={"color": inanimate_color, "width": 2},
         )
     )
     figure.add_trace(
@@ -369,7 +406,7 @@ def build_cell_dff_animate_inanimate_plot(
             y=masked(dff_trace, animate_mask),
             mode="lines",
             name="animate scene",
-            line={"color": ANIMATE_COLOR, "width": 2},
+            line={"color": animate_color, "width": 2},
         )
     )
     figure.update_layout(
@@ -393,6 +430,9 @@ def build_cell_dff_animate_inanimate_matplotlib_plot(
     output_path: Path,
     *,
     title: str,
+    animate_color: str = ANIMATE_COLOR,
+    inanimate_color: str = INANIMATE_COLOR,
+    context_color: str = CONTEXT_COLOR,
 ) -> Path:
     import matplotlib
 
@@ -413,7 +453,7 @@ def build_cell_dff_animate_inanimate_matplotlib_plot(
     ax.plot(
         timestamps,
         np.where(timepoint_labels < 0, dff_trace, np.nan),
-        color=CONTEXT_COLOR,
+        color=context_color,
         linewidth=0.8,
         alpha=0.6,
         label="outside natural scenes",
@@ -421,14 +461,14 @@ def build_cell_dff_animate_inanimate_matplotlib_plot(
     ax.plot(
         timestamps,
         np.where(timepoint_labels == 0, dff_trace, np.nan),
-        color=INANIMATE_COLOR,
+        color=inanimate_color,
         linewidth=1.6,
         label="inanimate scene",
     )
     ax.plot(
         timestamps,
         np.where(timepoint_labels == 1, dff_trace, np.nan),
-        color=ANIMATE_COLOR,
+        color=animate_color,
         linewidth=1.6,
         label="animate scene",
     )
@@ -454,6 +494,11 @@ def analyze_cell_dff_against_animate_inanimate(
     output_path: Path | None = None,
     cache_dir: Path | None = None,
     force_recompute_labels: bool = False,
+    time_start_s: float | None = None,
+    time_end_s: float | None = None,
+    animate_color: str = ANIMATE_COLOR,
+    inanimate_color: str = INANIMATE_COLOR,
+    context_color: str = CONTEXT_COLOR,
 ) -> dict:
     trace_data = fetch_cell_natural_scenes_trace(manifest_path, cell_specimen_id)
     label_data = load_or_compute_natural_scene_animate_inanimate_labels(
@@ -471,6 +516,13 @@ def analyze_cell_dff_against_animate_inanimate(
         stimulus_table=trace_data["stimulus_table"],
         animate_inanimate=label_data["animate_inanimate"],
     )
+    sliced = slice_trace_time_range(
+        trace_data["timestamps"],
+        trace_data["dff_trace"],
+        time_start_s=time_start_s,
+        time_end_s=time_end_s,
+        timepoint_labels=timepoint_labels,
+    )
 
     if output_path is None:
         output_path = (
@@ -481,29 +533,36 @@ def analyze_cell_dff_against_animate_inanimate(
     png_output_path = Path(output_path).with_suffix(".png")
 
     plot_path = build_cell_dff_animate_inanimate_plot(
-        timestamps=trace_data["timestamps"],
-        dff_trace=trace_data["dff_trace"],
-        timepoint_labels=timepoint_labels,
+        timestamps=sliced["timestamps"],
+        dff_trace=sliced["dff_trace"],
+        timepoint_labels=sliced["timepoint_labels"],
         output_path=Path(output_path),
         title=(
             f"Cell {int(cell_specimen_id)} dF/F during natural scenes "
             "(blue=animate, orange=inanimate)"
         ),
+        animate_color=animate_color,
+        inanimate_color=inanimate_color,
+        context_color=context_color,
     )
     png_plot_path = build_cell_dff_animate_inanimate_matplotlib_plot(
-        timestamps=trace_data["timestamps"],
-        dff_trace=trace_data["dff_trace"],
-        timepoint_labels=timepoint_labels,
+        timestamps=sliced["timestamps"],
+        dff_trace=sliced["dff_trace"],
+        timepoint_labels=sliced["timepoint_labels"],
         output_path=png_output_path,
         title=(
             f"Cell {int(cell_specimen_id)} dF/F during natural scenes "
             "(blue=animate, orange=inanimate)"
         ),
+        animate_color=animate_color,
+        inanimate_color=inanimate_color,
+        context_color=context_color,
     )
 
-    n_animate = int(np.count_nonzero(timepoint_labels == 1))
-    n_inanimate = int(np.count_nonzero(timepoint_labels == 0))
-    n_other = int(np.count_nonzero(timepoint_labels < 0))
+    assert sliced["timepoint_labels"] is not None
+    n_animate = int(np.count_nonzero(sliced["timepoint_labels"] == 1))
+    n_inanimate = int(np.count_nonzero(sliced["timepoint_labels"] == 0))
+    n_other = int(np.count_nonzero(sliced["timepoint_labels"] < 0))
 
     return {
         "cell_specimen_id": int(cell_specimen_id),
@@ -511,7 +570,7 @@ def analyze_cell_dff_against_animate_inanimate(
         "experiment_container_id": trace_data["experiment_container_id"],
         "plot_path": str(plot_path),
         "plot_png_path": str(png_plot_path),
-        "n_timepoints": int(len(trace_data["timestamps"])),
+        "n_timepoints": int(len(sliced["timestamps"])),
         "n_animate_timepoints": n_animate,
         "n_inanimate_timepoints": n_inanimate,
         "n_other_timepoints": n_other,
@@ -521,6 +580,11 @@ def analyze_cell_dff_against_animate_inanimate(
         "label_cache_path": label_data["cache_path"],
         "label_cache_metadata_path": label_data["cache_metadata_path"],
         "labels_from_cache": bool(label_data["from_cache"]),
+        "time_start_s": sliced["time_start_s"],
+        "time_end_s": sliced["time_end_s"],
+        "animate_color": animate_color,
+        "inanimate_color": inanimate_color,
+        "context_color": context_color,
     }
 
 
@@ -529,8 +593,17 @@ def analyze_cell_dff_vanilla(
     cell_specimen_id: int,
     *,
     output_path: Path | None = None,
+    time_start_s: float | None = None,
+    time_end_s: float | None = None,
+    line_color: str = VANILLA_COLOR,
 ) -> dict:
     trace_data = fetch_cell_natural_scenes_trace(manifest_path, cell_specimen_id)
+    sliced = slice_trace_time_range(
+        trace_data["timestamps"],
+        trace_data["dff_trace"],
+        time_start_s=time_start_s,
+        time_end_s=time_end_s,
+    )
 
     if output_path is None:
         output_path = (
@@ -541,16 +614,18 @@ def analyze_cell_dff_vanilla(
     png_output_path = Path(output_path).with_suffix(".png")
 
     plot_path = build_cell_dff_plot(
-        timestamps=trace_data["timestamps"],
-        dff_trace=trace_data["dff_trace"],
+        timestamps=sliced["timestamps"],
+        dff_trace=sliced["dff_trace"],
         output_path=Path(output_path),
         title=f"Cell {int(cell_specimen_id)} dF/F during natural scenes",
+        line_color=line_color,
     )
     png_plot_path = build_cell_dff_matplotlib_plot(
-        timestamps=trace_data["timestamps"],
-        dff_trace=trace_data["dff_trace"],
+        timestamps=sliced["timestamps"],
+        dff_trace=sliced["dff_trace"],
         output_path=png_output_path,
         title=f"Cell {int(cell_specimen_id)} dF/F during natural scenes",
+        line_color=line_color,
     )
 
     return {
@@ -559,5 +634,8 @@ def analyze_cell_dff_vanilla(
         "experiment_container_id": trace_data["experiment_container_id"],
         "plot_path": str(plot_path),
         "plot_png_path": str(png_plot_path),
-        "n_timepoints": int(len(trace_data["timestamps"])),
+        "n_timepoints": int(len(sliced["timestamps"])),
+        "time_start_s": sliced["time_start_s"],
+        "time_end_s": sliced["time_end_s"],
+        "line_color": line_color,
     }

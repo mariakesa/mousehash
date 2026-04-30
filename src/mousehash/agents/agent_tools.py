@@ -87,6 +87,11 @@ def plot_cell_natural_scenes_dff(
     batch_size: int = 16,
     device: str = "cpu",
     threshold_max_class_idx: int = 397,
+    time_start_s: float | None = None,
+    time_end_s: float | None = None,
+    animate_color: str = "#1f77b4",
+    inanimate_color: str = "#ff7f0e",
+    context_color: str = "#b0b7c3",
 ) -> str:
     """Plot one cell's dF/F trace with animate/inanimate natural-scene overlays.
 
@@ -103,6 +108,11 @@ def plot_cell_natural_scenes_dff(
         batch_size: Batch size forwarded to the scene classifier helper.
         device: Torch device for scene classification, e.g. cpu or cuda.
         threshold_max_class_idx: Top-1 ImageNet index cutoff for animate vs inanimate.
+        time_start_s: Optional start time in seconds for clipping the plotted trace.
+        time_end_s: Optional end time in seconds for clipping the plotted trace.
+        animate_color: Color for animate timepoints.
+        inanimate_color: Color for inanimate timepoints.
+        context_color: Color for non-natural-scene/background timepoints.
     """
     from pathlib import Path
 
@@ -122,10 +132,19 @@ def plot_cell_natural_scenes_dff(
         batch_size=int(batch_size),
         device=device,
         threshold_max_class_idx=int(threshold_max_class_idx),
+        time_start_s=None if time_start_s is None else float(time_start_s),
+        time_end_s=None if time_end_s is None else float(time_end_s),
+        animate_color=animate_color,
+        inanimate_color=inanimate_color,
+        context_color=context_color,
     )
     return (
         f"Cell plot complete. cell_specimen_id={summary['cell_specimen_id']}, "
         f"experiment_id={summary['experiment_id']}, "
+        f"time_start_s={summary['time_start_s']}, "
+        f"time_end_s={summary['time_end_s']}, "
+        f"animate_color={summary['animate_color']}, "
+        f"inanimate_color={summary['inanimate_color']}, "
         f"animate_timepoints={summary['n_animate_timepoints']}, "
         f"inanimate_timepoints={summary['n_inanimate_timepoints']}, "
         f"plot={summary['plot_path']}, "
@@ -136,6 +155,9 @@ def plot_cell_natural_scenes_dff(
 def plot_cell_natural_scenes_dff_vanilla(
     manifest_path: str | None,
     cell_specimen_id: int,
+    time_start_s: float | None = None,
+    time_end_s: float | None = None,
+    line_color: str = "#2f4858",
 ) -> str:
     """Plot one cell's dF/F trace without animate/inanimate overlay labels.
 
@@ -143,6 +165,9 @@ def plot_cell_natural_scenes_dff_vanilla(
         manifest_path: Absolute path to the Allen BrainObservatoryCache manifest.
             If omitted, uses the configured ALLEN_DATA path.
         cell_specimen_id: Allen cell specimen identifier to fetch.
+        time_start_s: Optional start time in seconds for clipping the plotted trace.
+        time_end_s: Optional end time in seconds for clipping the plotted trace.
+        line_color: Color for the vanilla dF/F trace.
     """
     from pathlib import Path
 
@@ -156,10 +181,16 @@ def plot_cell_natural_scenes_dff_vanilla(
     summary = analyze_cell_dff_vanilla(
         manifest_path=resolved_manifest_path,
         cell_specimen_id=int(cell_specimen_id),
+        time_start_s=None if time_start_s is None else float(time_start_s),
+        time_end_s=None if time_end_s is None else float(time_end_s),
+        line_color=line_color,
     )
     return (
         f"Vanilla cell plot complete. cell_specimen_id={summary['cell_specimen_id']}, "
         f"experiment_id={summary['experiment_id']}, "
+        f"time_start_s={summary['time_start_s']}, "
+        f"time_end_s={summary['time_end_s']}, "
+        f"line_color={summary['line_color']}, "
         f"n_timepoints={summary['n_timepoints']}, "
         f"plot={summary['plot_path']}, "
         f"plot_png={summary['plot_png_path']}"
