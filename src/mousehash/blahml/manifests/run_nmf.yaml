@@ -1,0 +1,205 @@
+id: run_nmf
+version: 0.1.0
+display_name: Run NMF
+workflow_family: dimensionality_reduction
+priority: MVP
+
+description:
+  short: Recover nonnegative additive semantic mixture structure from a probability matrix.
+  long: >
+    NMF on softmax probabilities returns a small set of nonnegative components,
+    each interpretable as an additive semantic theme. Each row's score vector
+    expresses how much of each theme is present in that observation.
+
+tool_binding:
+  python_function: mousehash.tools.decompositions.nmf.run_nmf
+  input_model: RunNMFSpec
+  output_artifact: StimulusDecomposition
+
+datajoint:
+  spec_table: DecompositionSpec
+  computed_table: StimulusDecomposition
+  report_table: StimulusDecompositionReport
+
+inputs:
+  - name: input_artifact
+    type: artifact_ref
+    required: true
+    description: The probability matrix to factor (rows must be non-negative and sum to 1).
+    accepted_artifact_types:
+      - stimulus_probabilities
+    question:
+      ask: Which probability matrix should NMF factorize?
+      explain: >
+        NMF needs a non-negative matrix. The natural input is the per-image
+        softmax probability matrix from the ViT classifier — each row is one
+        Allen natural scene image, each column is an ImageNet class.
+
+parameters:
+  - name: n_components
+    type: integer
+    required: false
+    default: 10
+    range:
+      min: 2
+      max: 100
+    question:
+      ask: How many NMF components (themes) should I learn?
+      explain: >
+        Each component is one additive semantic theme. Fewer components give
+        coarser themes; more components give finer-grained, sometimes
+        redundant themes. 10 is a reasonable starting point for exploration.
+      default_explanation: >
+        10 components keeps the structure inspectable in a small report.
+
+  - name: temperature
+    type: float
+    required: false
+    default: 1.0
+    range:
+      min: 0.05
+      max: 10.0
+    question:
+      ask: What temperature should I apply to the input probabilities?
+      explain: >
+        Temperature reshapes the probability distribution before NMF.
+        T=1 leaves it unchanged, T>1 smooths the distribution (more classes
+        contribute), and T<1 sharpens it (mass concentrates on the top-1
+        class). Smoothing tends to make NMF themes broader and more semantic.
+      default_explanation: >
+        T=1.0 leaves the softmax probabilities unchanged.
+
+  - name: init
+    type: enum
+    required: false
+    default: nndsvda
+    choices:
+      - random
+      - nndsvd
+      - nndsvda
+      - nndsvdar
+    question:
+      ask: Which NMF initialization should I use?
+      explain: >
+        nndsvda is a deterministic warm start that works well for sparse
+        probability matrices. random is faster but less reproducible.
+
+  - name: solver
+    type: enum
+    required: false
+    default: cd
+    choices:
+      - cd
+      - mu
+    question:
+      ask: Which NMF solver should I use?
+      explain: >
+        cd (coordinate descent) is the sklearn default and is fast on dense
+        matrices. mu (multiplicative update) is required for some beta_loss
+        choices.
+
+  - name: beta_loss
+    type: enum
+    required: false
+    default: frobenius
+    choices:
+      - frobenius
+      - kullback-leibler
+      - itakura-saito
+    question:
+      ask: Which reconstruction loss should NMF minimize?
+      explain: >
+        frobenius is the standard squared-error loss. KL and IS are appropriate
+        when the input is a count or probability matrix and you want to weight
+        small entries more heavily, but they require solver=mu.
+
+  - name: max_iter
+    type: integer
+    required: false
+    default: 1000
+    range:
+      min: 50
+      max: 100000
+    question:
+      ask: How many iterations should NMF run before giving up?
+      explain: >
+        NMF stops when the per-step improvement falls below the tolerance,
+        or when this iteration cap is reached. 1000 is a safe default.
+
+  - name: tol
+    type: float
+    required: false
+    default: 0.0001
+    range:
+      min: 1e-8
+      max: 0.1
+    question:
+      ask: What convergence tolerance should NMF use?
+      explain: >
+        Smaller values give a tighter fit at the cost of more iterations.
+        1e-4 is the sklearn default.
+
+  - name: random_state
+    type: integer
+    required: false
+    default: 0
+    question:
+      ask: What random seed should NMF use?
+      explain: >
+        Seeds the random parts of initialization. Pin this to make NMF
+        runs reproducible across machines.
+
+  - name: alpha_W
+    type: float
+    required: false
+    default: 0.0
+    range:
+      min: 0.0
+      max: 10.0
+    question:
+      ask: How strongly should I regularize the score matrix W?
+      explain: >
+        Larger alpha_W pushes scores toward sparser, smaller values. 0.0
+        disables regularization on W.
+
+  - name: alpha_H
+    type: float
+    required: false
+    default: 0.0
+    range:
+      min: 0.0
+      max: 10.0
+    question:
+      ask: How strongly should I regularize the component matrix H?
+      explain: >
+        Larger alpha_H pushes components toward sparser, smaller values.
+        0.0 disables regularization on H.
+
+  - name: l1_ratio
+    type: float
+    required: false
+    default: 0.0
+    range:
+      min: 0.0
+      max: 1.0
+    question:
+      ask: What L1/L2 mix should the regularizer use?
+      explain: >
+        0.0 is pure L2 (smooth), 1.0 is pure L1 (sparse), anything in
+        between is a mix. Only matters if alpha_W or alpha_H is nonzero.
+
+validation:
+  checks:
+    - input_matrix_exists
+    - input_matrix_is_2d
+    - n_components_less_than_min_dimension
+    - no_nan_or_policy_declared
+
+assumptions:
+  - The input matrix is non-negative (NMF requires it).
+  - Rows are observations and columns are features.
+
+failure_modes:
+  - Components can be redundant or ill-conditioned at large n_components.
+  - Heavy regularization can push components to zero and produce empty themes.
+  - Rare classes can dominate a theme if temperature is very low.

@@ -41,6 +41,30 @@ Rules:
 - When all pipeline stages are done, tell the user where the HTML reports are.
 - Default scene_set_id is 'allen_natural_scenes_v1' unless told otherwise.
 - If a manifest path is not provided for cell plotting, use the configured default.
+
+BlahML dialogue protocol (for one-off PCA/NMF runs with custom parameters):
+- When the user asks for PCA, NMF, or any analysis tool that BlahML covers,
+  start a BlahML dialogue instead of calling a tool with guessed parameters.
+- Use blahml_list_tools to see which manifests are available, then
+  blahml_start_dialogue(tool_id, scene_set_id, representation_spec_id, rule_id)
+  to begin. Defaults: representation_spec_id='vit_b16_imagenet_cpu',
+  rule_id='imagenet_top1_leq_397'.
+- Each call returns a JSON payload with 'ask' and 'explain'. Show the user
+  BOTH fields verbatim: the explain text carries scientific framing the user
+  needs in order to answer well. Do not paraphrase it.
+- If the payload includes a 'default' and the user has not stated a
+  preference, you may apply the default — say which default you used and
+  the 'default_explanation' if present. For scientific-intent slots
+  (fit_scope, split_unit), always ask explicitly even when a default exists.
+- Forward the user's answer with blahml_submit_answer(dialogue_id,
+  parameter_name, value). Repeat until the response payload contains
+  'status': 'READY'.
+- Once READY, call blahml_run(dialogue_id) to dispatch the tool. Report the
+  returned tool_run_spec_id and any warnings. The deterministic compute
+  pipeline runs underneath, so the same scene_set_id / spec_id / rule_id
+  identifiers apply.
+- Do not call the underlying run_decompositions / run_nmf_at_temperature
+  tools after a BlahML dialogue — blahml_run handles dispatch.
 """
 
 

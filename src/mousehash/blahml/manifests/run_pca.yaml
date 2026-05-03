@@ -1,0 +1,98 @@
+id: run_pca
+version: 0.1.0
+display_name: Run PCA
+workflow_family: dimensionality_reduction
+priority: MVP
+
+description:
+  short: Extract dominant orthogonal axes of variation from a neural or stimulus matrix.
+  long: >
+    PCA finds directions that explain the most variance in the input matrix.
+    In MouseHash v0, this is useful for exploring ViT logits, neural responses,
+    or other feature representations.
+
+tool_binding:
+  python_function: mousehash.tools.decompositions.pca.run_pca
+  input_model: RunPCASpec
+  output_artifact: StimulusDecomposition
+
+datajoint:
+  spec_table: DecompositionSpec
+  computed_table: StimulusDecomposition
+  report_table: StimulusDecompositionReport
+
+inputs:
+  - name: input_artifact
+    type: artifact_ref
+    required: true
+    description: The saved matrix artifact to analyze.
+    accepted_artifact_types:
+      - stimulus_logits
+      - neural_response_matrix
+    question:
+      ask: Which data matrix should PCA use?
+      explain: >
+        PCA needs a rectangular matrix, usually observations by features.
+        For the first MouseHash demo, a good choice is the ViT logits matrix,
+        where each row is an Allen natural scene image and each column is an
+        ImageNet class score.
+
+parameters:
+  - name: n_components
+    type: integer
+    required: false
+    default: 10
+    range:
+      min: 2
+      max: 100
+    question:
+      ask: How many PCA components should I keep?
+      explain: >
+        Components are the low-dimensional axes PCA returns. Keeping 2 or 3
+        is useful for visualization, while 10-50 can be better if you want
+        to preserve more structure for later analysis.
+      default_explanation: >
+        If you are exploring, 10 components is a reasonable starting point.
+
+  - name: normalize_input
+    type: boolean
+    required: false
+    default: true
+    question:
+      ask: Should I standardize the features before PCA?
+      explain: >
+        Standardization puts features on a comparable scale. This matters
+        when some dimensions have much larger variance than others. For
+        ViT logits, standardizing often makes component structure easier
+        to interpret.
+
+  - name: fit_scope
+    type: enum
+    required: false
+    default: exploratory_full_dataset
+    choices:
+      - exploratory_full_dataset
+      - train_only
+    question:
+      ask: Is this PCA for exploration, or should it be fit only on training data?
+      explain: >
+        Exploratory PCA can use the full dataset to help you browse structure.
+        But if PCA is part of a predictive evaluation, it should be fit only
+        on training data to avoid leakage.
+
+validation:
+  checks:
+    - input_matrix_exists
+    - input_matrix_is_2d
+    - n_components_less_than_min_dimension
+    - no_nan_or_policy_declared
+    - leakage_warning_if_fit_scope_full_dataset
+
+assumptions:
+  - Rows are observations and columns are features.
+  - PCA is meaningful when variance structure is scientifically interpretable.
+
+failure_modes:
+  - PCA axes may reflect nuisance variance rather than meaningful biological structure.
+  - Full-dataset PCA can leak information if used inside predictive evaluation.
+  - Components are sign-indeterminate, so directions can flip between runs.

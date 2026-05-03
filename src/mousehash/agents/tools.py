@@ -3,6 +3,10 @@ from __future__ import annotations
 from smolagents import tool
 
 from mousehash.agents.agent_tools import (
+    blahml_list_tools as _blahml_list_tools,
+    blahml_run as _blahml_run,
+    blahml_start_dialogue as _blahml_start_dialogue,
+    blahml_submit_answer as _blahml_submit_answer,
     check_pipeline_status as _check_pipeline_status,
     get_analysis_summary as _get_analysis_summary,
     plot_cell_natural_scenes_dff as _plot_cell_natural_scenes_dff,
@@ -23,6 +27,10 @@ run_representations = tool(_run_representations)
 run_decompositions = tool(_run_decompositions)
 run_nmf_at_temperature = tool(_run_nmf_at_temperature)
 run_reports = tool(_run_reports)
+blahml_list_tools = tool(_blahml_list_tools)
+blahml_start_dialogue = tool(_blahml_start_dialogue)
+blahml_submit_answer = tool(_blahml_submit_answer)
+blahml_run = tool(_blahml_run)
 
 ALL_TOOLS = [
     check_pipeline_status,
@@ -34,6 +42,10 @@ ALL_TOOLS = [
     run_decompositions,
     run_nmf_at_temperature,
     run_reports,
+    blahml_list_tools,
+    blahml_start_dialogue,
+    blahml_submit_answer,
+    blahml_run,
 ]
 
 __all__ = [
@@ -47,4 +59,8 @@ __all__ = [
     "run_decompositions",
     "run_nmf_at_temperature",
     "run_reports",
+    "blahml_list_tools",
+    "blahml_start_dialogue",
+    "blahml_submit_answer",
+    "blahml_run",
 ]

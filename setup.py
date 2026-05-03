@@ -20,6 +20,8 @@ setup(
         "Pillow>=10",
         "pyarrow>=15",
         "python-dotenv>=1.0",
+        "pydantic>=2.6",
+        "PyYAML>=6",
     ],
     extras_require={
         "agents": [
@@ -36,4 +38,6 @@ setup(
     },
     packages=find_packages("src"),
     package_dir={"": "src"},
+    package_data={"mousehash.blahml": ["manifests/*.yaml"]},
+    include_package_data=True,
 )

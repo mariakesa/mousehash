@@ -412,4 +412,209 @@ __all__ = [
     "run_decompositions",
     "run_nmf_at_temperature",
     "run_reports",
+    "blahml_list_tools",
+    "blahml_start_dialogue",
+    "blahml_submit_answer",
+    "blahml_run",
 ]
+
+
+# ---------------------------------------------------------------------------
+# BlahML dialogue tools
+# ---------------------------------------------------------------------------
+
+# Per-process dialogue state. Each entry tracks one in-progress conversation:
+# the manifest id being filled, the cumulative answers, and the question
+# trace (one record per asked-and-answered slot). v0 keeps this in memory;
+# durability lives on ToolRunSpec once the dialogue is finalized.
+_DIALOGUES: dict[str, dict] = {}
+
+
+def _format_question_payload(dialogue_id: str, pending) -> str:
+    import json as _json
+
+    p = pending.parameter
+    payload = dict(
+        dialogue_id=dialogue_id,
+        parameter_name=p.name,
+        section=pending.section,
+        type=p.type,
+        required=p.required,
+        ask=p.question.ask,
+        explain=p.question.explain.strip(),
+    )
+    if p.choices is not None:
+        payload["choices"] = p.choices
+    if p.default is not None:
+        payload["default"] = p.default
+    if p.question.default_explanation:
+        payload["default_explanation"] = p.question.default_explanation.strip()
+    if p.range is not None:
+        payload["range"] = dict(min=p.range.min, max=p.range.max)
+    return _json.dumps(payload, default=str)
+
+
+def blahml_list_tools() -> str:
+    """List the BlahML tools that have manifests installed.
+
+    Returns a JSON string of objects with ``id``, ``display_name``,
+    ``workflow_family``, and ``priority`` so the agent can decide which
+    manifest to start a dialogue against.
+    """
+    import json as _json
+
+    from mousehash.blahml.registry import ManifestRegistry
+
+    reg = ManifestRegistry()
+    out = []
+    for tool_id in reg.all_ids():
+        m = reg.by_id(tool_id).manifest
+        out.append(
+            dict(
+                id=m.id,
+                display_name=m.display_name,
+                workflow_family=m.workflow_family,
+                priority=m.priority,
+                description=m.description.get("short", ""),
+            )
+        )
+    return _json.dumps(out)
+
+
+def blahml_start_dialogue(
+    tool_id: str,
+    scene_set_id: str,
+    representation_spec_id: str,
+    rule_id: str,
+) -> str:
+    """Begin a manifest-driven parameter dialogue for one BlahML tool.
+
+    Pre-fills the input_artifact slot from the three identifiers the user
+    has already given (or from MouseHash defaults the agent supplied), then
+    returns the first manifest-defined question that still needs an answer.
+
+    Args:
+        tool_id: BlahML manifest id, e.g. 'run_pca' or 'run_nmf'.
+        scene_set_id: Allen scene set, typically 'allen_natural_scenes_v1'.
+        representation_spec_id: RepresentationSpec primary key.
+        rule_id: AnimateInanimateRule primary key.
+
+    Returns:
+        JSON string. If a question is pending, the payload contains
+        ``dialogue_id``, ``parameter_name``, ``ask``, ``explain``, and
+        optional ``choices``, ``default``, ``default_explanation``, ``range``.
+        If the dialogue is already fully resolved, returns a payload with
+        ``status="READY"`` and ``dialogue_id``.
+    """
+    import json as _json
+    import uuid
+
+    from mousehash.blahml.question_engine import next_question
+    from mousehash.blahml.registry import ManifestRegistry
+
+    reg = ManifestRegistry()
+    manifest = reg.by_id(tool_id).manifest
+
+    answers = {
+        "input_artifact": dict(
+            scene_set_id=scene_set_id,
+            representation_spec_id=representation_spec_id,
+            rule_id=rule_id,
+        )
+    }
+    dialogue_id = uuid.uuid4().hex[:12]
+    _DIALOGUES[dialogue_id] = dict(
+        tool_id=tool_id,
+        answers=answers,
+        question_trace=[],
+    )
+
+    pending = next_question(manifest, answers)
+    if pending is None:
+        return _json.dumps(dict(status="READY", dialogue_id=dialogue_id))
+    return _format_question_payload(dialogue_id, pending)
+
+
+def blahml_submit_answer(
+    dialogue_id: str, parameter_name: str, value: str
+) -> str:
+    """Record one user answer and return the next manifest-defined question.
+
+    Args:
+        dialogue_id: The id returned by blahml_start_dialogue.
+        parameter_name: The slot being filled (matches ``parameter_name``
+            from the previous question payload).
+        value: The user's answer as a string. The spec builder coerces it
+            to the manifest-declared type.
+
+    Returns:
+        Either the next question payload (same shape as
+        blahml_start_dialogue) or, if the dialogue is fully resolved, a
+        JSON object with ``status="READY"`` and ``dialogue_id``.
+    """
+    import json as _json
+
+    from mousehash.blahml.question_engine import next_question
+    from mousehash.blahml.registry import ManifestRegistry
+
+    if dialogue_id not in _DIALOGUES:
+        return _json.dumps(dict(status="ERROR", message=f"unknown dialogue_id {dialogue_id!r}"))
+
+    state = _DIALOGUES[dialogue_id]
+    state["answers"][parameter_name] = value
+    state["question_trace"].append(
+        dict(parameter_name=parameter_name, value=value, source="user")
+    )
+
+    reg = ManifestRegistry()
+    manifest = reg.by_id(state["tool_id"]).manifest
+    pending = next_question(manifest, state["answers"])
+    if pending is None:
+        return _json.dumps(dict(status="READY", dialogue_id=dialogue_id))
+    return _format_question_payload(dialogue_id, pending)
+
+
+def blahml_run(dialogue_id: str) -> str:
+    """Finalize the dialogue, write the ToolRunSpec audit row, and dispatch
+    the deterministic tool.
+
+    Args:
+        dialogue_id: The id returned by blahml_start_dialogue.
+
+    Returns:
+        Human-readable summary including the ``tool_run_spec_id``, the
+        derived ``decomposition_spec_id``, any safety warnings, and a
+        compact form of the deterministic-tool summary.
+    """
+    import json as _json
+
+    from mousehash.blahml.executor import run_from_resolved_spec
+    from mousehash.blahml.registry import ManifestRegistry
+    from mousehash.blahml.spec_builder import build_resolved_spec
+
+    if dialogue_id not in _DIALOGUES:
+        return f"ERROR: unknown dialogue_id {dialogue_id!r}"
+
+    state = _DIALOGUES[dialogue_id]
+    reg = ManifestRegistry()
+    registered = reg.by_id(state["tool_id"])
+
+    resolved = build_resolved_spec(
+        registered.manifest,
+        state["answers"],
+        manifest_sha256=registered.sha256,
+        question_trace=state["question_trace"],
+        created_by="agent_dialogue",
+    )
+
+    result = run_from_resolved_spec(resolved, registry=reg)
+
+    lines = [
+        f"BlahML dispatched {result['tool_id']}.",
+        f"  tool_run_spec_id     = {result['tool_run_spec_id']}",
+        f"  decomposition_spec_id = {result['decomposition_spec_id']}",
+    ]
+    for w in result.get("warnings", []):
+        lines.append(f"  WARNING [{w['check']}]: {w['message']}")
+    lines.append(f"  summary = {_json.dumps(result['summary'], default=str)}")
+    return "\n".join(lines)
