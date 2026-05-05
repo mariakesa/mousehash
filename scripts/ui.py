@@ -19,8 +19,10 @@ def create_app(model_id: str):
 
     from mousehash.agents.smolagents_adapter import make_coordinator
     from mousehash.agents.ui_helpers import (
+        extract_all_artifact_paths,
         extract_plot_path,
         extract_plot_png_path,
+        format_artifact_links_markdown,
         normalize_image_path,
         render_plot_iframe,
     )
@@ -35,9 +37,19 @@ def create_app(model_id: str):
         response_text = response if isinstance(response, str) else str(response)
         plot_path = extract_plot_path(response_text)
         plot_png_path = extract_plot_png_path(response_text)
+
+        # Append a clickable links block whenever the tool reply mentions any
+        # generated artifact path. The agent's natural language stays first;
+        # the links are an unconditional surfacing layer underneath.
+        artifact_paths = extract_all_artifact_paths(response_text)
+        links_block = format_artifact_links_markdown(artifact_paths)
+        assistant_content = (
+            f"{response_text}\n\n{links_block}" if links_block else response_text
+        )
+
         history = history + [
             {"role": "user", "content": message},
-            {"role": "assistant", "content": response_text},
+            {"role": "assistant", "content": assistant_content},
         ]
         return history, normalize_image_path(plot_png_path), render_plot_iframe(plot_path), ""
 
@@ -101,12 +113,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    from mousehash.config import DATA_ROOT
+
     print(f"\nStarting MouseHash UI (model={args.model}) on http://localhost:{args.port}")
     print("Ask the coordinator to run the pipeline or query your analysis results.\n")
 
+    # Allow gradio to serve generated artifacts (reports, plots, summary
+    # JSON, score arrays) so the chat's "Generated files" links resolve.
+    # All MouseHash artifacts live under DATA_ROOT.
     create_app(args.model).launch(
         server_port=args.port,
         share=args.share,
+        allowed_paths=[str(DATA_ROOT)],
     )
 
 

@@ -162,6 +162,24 @@ def run_from_resolved_spec(
             rule_id=artifact_keys["rule_id"],
             decomposition_spec_id=decomposition_spec_id,
         )
+
+        # ``compute_stimulus_decomposition`` writes paths to a DataJoint row
+        # but doesn't return them. Fetch the row and merge so the caller can
+        # surface clickable links to the artifacts.
+        from mousehash.schema.decompositions import StimulusDecomposition
+
+        decomp_key = dict(
+            **artifact_keys, decomposition_spec_id=decomposition_spec_id
+        )
+        row = (StimulusDecomposition & decomp_key).fetch1()
+        for field in (
+            "scores_path",
+            "components_path",
+            "component_stats_path",
+            "summary_path",
+        ):
+            if field in row:
+                summary[field] = row[field]
     else:
         raise ExecutionError(
             f"No execution path wired for tool {resolved.tool_id!r}"

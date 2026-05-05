@@ -611,10 +611,27 @@ def blahml_run(dialogue_id: str) -> str:
 
     lines = [
         f"BlahML dispatched {result['tool_id']}.",
-        f"  tool_run_spec_id     = {result['tool_run_spec_id']}",
+        f"  tool_run_spec_id      = {result['tool_run_spec_id']}",
         f"  decomposition_spec_id = {result['decomposition_spec_id']}",
     ]
     for w in result.get("warnings", []):
         lines.append(f"  WARNING [{w['check']}]: {w['message']}")
-    lines.append(f"  summary = {_json.dumps(result['summary'], default=str)}")
+
+    # Surface artifact paths on dedicated lines so the UI link-extractor
+    # picks them up. The compute orchestrator returns a dict with several
+    # "*_path" fields; emit each one explicitly.
+    summary = result.get("summary") or {}
+    if isinstance(summary, dict):
+        path_fields = sorted(k for k in summary if k.endswith("_path"))
+        for field in path_fields:
+            value = summary.get(field)
+            if value:
+                lines.append(f"  {field} = {value}")
+
+        non_path_summary = {
+            k: v for k, v in summary.items() if not k.endswith("_path")
+        }
+        if non_path_summary:
+            lines.append(f"  summary = {_json.dumps(non_path_summary, default=str)}")
+
     return "\n".join(lines)

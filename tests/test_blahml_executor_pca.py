@@ -47,6 +47,24 @@ def test_executor_persists_run_and_dispatches(monkeypatch) -> None:
         def insert1(row, skip_duplicates=False):
             inserted_decomp_specs.append(row)
 
+    class _FakeStimulusDecomposition:
+        """Mimics the DataJoint restriction-then-fetch1 API."""
+        @staticmethod
+        def __and__(_, key):
+            class _Restricted:
+                @staticmethod
+                def fetch1():
+                    return dict(
+                        scores_path="/tmp/scores.npy",
+                        components_path="/tmp/components.npy",
+                        component_stats_path="/tmp/stats.json",
+                        summary_path="/tmp/summary.json",
+                    )
+            return _Restricted()
+
+    # The class must support &-restriction; bind via a tiny shim instance.
+    _stim_decomp = type("FSD", (), {"__and__": _FakeStimulusDecomposition.__and__})()
+
     def _fake_compute(**kwargs):
         compute_calls.append(kwargs)
         return dict(method="pca", n_components=kwargs["decomposition_spec_id"])
@@ -57,6 +75,7 @@ def test_executor_persists_run_and_dispatches(monkeypatch) -> None:
 
     monkeypatch.setattr(blahml_schema, "ToolRunSpec", _FakeToolRunSpec)
     monkeypatch.setattr(decomp_schema, "DecompositionSpec", _FakeDecompositionSpec)
+    monkeypatch.setattr(decomp_schema, "StimulusDecomposition", _stim_decomp)
     monkeypatch.setattr(compute_module, "compute_stimulus_decomposition", _fake_compute)
 
     from mousehash.blahml.executor import run_from_resolved_spec
@@ -92,6 +111,11 @@ def test_executor_persists_run_and_dispatches(monkeypatch) -> None:
     assert call["rule_id"] == "imagenet_top1_leq_397"
     assert call["decomposition_spec_id"] == f"blahml_{resolved.tool_run_spec_id}"
 
+    # Paths from the StimulusDecomposition row were merged into the summary
+    # so the agent can surface them as clickable links.
+    assert result["summary"]["summary_path"] == "/tmp/summary.json"
+    assert result["summary"]["scores_path"] == "/tmp/scores.npy"
+
 
 def test_executor_emits_warning_for_full_dataset_fit_scope(monkeypatch) -> None:
     class _Noop:
@@ -105,6 +129,16 @@ def test_executor_emits_warning_for_full_dataset_fit_scope(monkeypatch) -> None:
 
     monkeypatch.setattr(blahml_schema, "ToolRunSpec", _Noop)
     monkeypatch.setattr(decomp_schema, "DecompositionSpec", _Noop)
+
+    class _FakeStimDecomp:
+        def __and__(self, key):
+            class _R:
+                @staticmethod
+                def fetch1():
+                    return {}
+            return _R()
+
+    monkeypatch.setattr(decomp_schema, "StimulusDecomposition", _FakeStimDecomp())
     monkeypatch.setattr(
         compute_module, "compute_stimulus_decomposition", lambda **kw: {}
     )
