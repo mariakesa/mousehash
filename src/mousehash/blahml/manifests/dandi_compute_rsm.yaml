@@ -1,0 +1,56 @@
+id: dandi_compute_rsm
+version: 0.1.0
+display_name: Compute Representational Similarity Matrix
+workflow_family: geometry
+priority: MVP
+
+description:
+  short: Items x items similarity from a neural response matrix.
+  long: >
+    Averages responses within each item (condition or stimulus) and computes a
+    pairwise distance or similarity matrix. Foundation for RSA and CKA.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.compute_rsm
+  input_model: RSMSpec
+  output_artifact: RSMArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which manifest should be used to build the RSM?
+      explain: The manifest pins the neural data location and which conditions exist as items.
+
+parameters:
+  - name: item_grouping
+    type: string
+    required: true
+    question:
+      ask: Which trial column defines the items in the RSM?
+      explain: Each unique value becomes one row/column of the matrix.
+
+  - name: distance_metric
+    type: enum
+    required: false
+    default: correlation
+    choices: [correlation, euclidean, cosine, mahalanobis]
+    question:
+      ask: Distance metric for the matrix?
+      explain: correlation is rotation-invariant and most common in RSA.
+
+  - name: response_window_s
+    type: float
+    required: false
+    default: 0.4
+    range: {min: 0.05, max: 5.0}
+    question:
+      ask: Width of the response window over which to average activity.
+      explain: Provide a value compatible with the parameter's description; ask the agent if unsure.
+
+validation:
+  checks:
+    - manifest_has_neural_data
+    - matched_items_across_conditions

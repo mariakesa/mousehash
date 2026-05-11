@@ -1,0 +1,86 @@
+id: dandi_trial_averaged_pca
+version: 0.1.0
+display_name: Run Trial-Averaged PCA
+workflow_family: factor_modeling
+priority: MVP
+
+description:
+  short: PCA on condition x time x neuron trial averages.
+  long: >
+    Averages trials within each condition, then runs PCA on the resulting
+    condition-by-time-by-neuron tensor. Reveals task-locked population
+    geometry.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.run_trial_averaged_pca
+  input_model: TrialAveragedPCASpec
+  output_artifact: TrialAveragedPCAArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which role manifest should this analysis use?
+      explain: The manifest must include neural_data, conditions, and time_organization.
+
+parameters:
+  - name: alignment_event
+    type: enum
+    required: true
+    choices: [stimulus_onset, go_cue, choice, perturbation_onset]
+    question:
+      ask: Which event should trials align to before averaging?
+      explain: Trial averaging only makes sense relative to a shared event anchor.
+
+  - name: window_pre_s
+    type: float
+    required: false
+    default: 0.2
+    range: {min: 0.0, max: 5.0}
+    question:
+      ask: Seconds before the event to include in each trial.
+      explain: Pre-event window for baseline / pre-stimulus dynamics.
+
+  - name: window_post_s
+    type: float
+    required: false
+    default: 1.0
+    range: {min: 0.1, max: 10.0}
+    question:
+      ask: Seconds after the event to include in each trial.
+      explain: Post-event window for response dynamics.
+
+  - name: bin_size_ms
+    type: integer
+    required: false
+    default: 50
+    range: {min: 10, max: 500}
+    question:
+      ask: Time-bin size in ms.
+      explain: Coarse-enough that trial-averaged rates are stable.
+
+  - name: n_components
+    type: integer
+    required: false
+    default: 6
+    range: {min: 2, max: 50}
+    question:
+      ask: How many principal components should be kept?
+      explain: 3-10 components are typical for task-locked dynamics.
+
+  - name: condition_grouping
+    type: string
+    required: true
+    question:
+      ask: Which trial column defines the conditions to average within?
+      explain: >
+        Each unique value of this column produces one "condition" row of
+        the condition-by-time-by-neuron tensor.
+
+validation:
+  checks:
+    - manifest_has_neural_data
+    - manifest_has_conditions
+    - per_condition_trial_count_at_least_5

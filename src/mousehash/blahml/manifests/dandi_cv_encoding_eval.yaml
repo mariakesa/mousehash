@@ -1,0 +1,65 @@
+id: dandi_cv_encoding_eval
+version: 0.1.0
+display_name: Run Cross-Validated Encoding Evaluation
+workflow_family: encoding_decoding
+priority: MVP
+
+description:
+  short: Evaluation harness for an arbitrary encoding model with leakage controls.
+  long: >
+    Per-fold predictions, train-only scaling, reporting of leakage checks.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.cv_encoding_eval
+  input_model: CVEncodingSpec
+  output_artifact: CVEncodingArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which manifest does the evaluation use?
+      explain: Manifest must include neural_data plus at least one of stimuli or behavior.
+
+parameters:
+  - name: encoder
+    type: enum
+    required: false
+    default: ridge
+    choices: [linear, ridge, lasso, elastic_net, poisson_glm]
+    question:
+      ask: Which encoder family to evaluate?
+      explain: ridge is the safest default; poisson_glm handles spike counts directly.
+
+  - name: k_folds
+    type: integer
+    required: false
+    default: 5
+    range: {min: 2, max: 20}
+    question:
+      ask: Number of CV folds.
+      explain: 5 folds is a good balance between bias and variance.
+
+  - name: split_unit
+    type: enum
+    required: true
+    choices: [stimulus, session, time_block]
+    question:
+      ask: Exchangeable unit for the split.
+      explain: For time series, prefer time_block to prevent temporal leakage.
+
+  - name: metric
+    type: enum
+    required: false
+    default: pearson_r
+    choices: [r2, pearson_r, log_likelihood]
+    question:
+      ask: Primary held-out metric.
+      explain: Provide a value compatible with the parameter's description; ask the agent if unsure.
+
+validation:
+  checks:
+    - train_only_scaling_enforced
+    - per_fold_metric_reported

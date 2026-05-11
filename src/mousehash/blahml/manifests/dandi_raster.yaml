@@ -1,0 +1,92 @@
+id: dandi_raster
+version: 0.1.0
+display_name: Generate Raster Plot
+workflow_family: visualization
+priority: MVP
+
+description:
+  short: Per-trial spike-time raster aligned to a task event.
+  long: >
+    Plots one row per trial with one tick per spike. Useful for verifying
+    alignment, sanity-checking trial structure, and seeing event-locked
+    modulation before running PSTH / decoding.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.generate_raster_plot
+  input_model: RasterSpec
+  output_artifact: RasterArtifact
+
+datajoint:
+  spec_table: ToolSpec
+  computed_table: ToolRun
+  report_table: AnalysisArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    description: Path to the EvidenceBackedRoleManifest JSON.
+    question:
+      ask: Which role manifest does this raster correspond to?
+      explain: >
+        The manifest tells the agent which dandiset, NWB asset, and spike-time
+        path to read from. Use the manifest_path returned by parse_nwb_manifest.
+
+parameters:
+  - name: alignment_event
+    type: enum
+    required: true
+    choices: [stimulus_onset, go_cue, choice, perturbation_onset, custom]
+    question:
+      ask: Which event should each trial align to?
+      explain: >
+        The scientific interpretation of a raster depends entirely on the
+        alignment event. Stimulus_onset is the most common; go_cue and choice
+        emphasize behaviorally-locked structure. Pick whichever event answers
+        your specific question.
+
+  - name: window_pre_s
+    type: float
+    required: false
+    default: 0.5
+    range: {min: 0.0, max: 5.0}
+    question:
+      ask: How many seconds of activity before the event should be shown?
+      explain: >
+        A baseline window before the event helps you see pre-stimulus
+        firing and confirms the alignment is working. 0.5 s is a good default
+        for sensory tasks.
+
+  - name: window_post_s
+    type: float
+    required: false
+    default: 1.5
+    range: {min: 0.1, max: 10.0}
+    question:
+      ask: How many seconds of activity after the event should be shown?
+      explain: >
+        Long enough to capture the response, short enough to keep the plot
+        readable. 1.5 s typically covers stimulus and early response epochs.
+
+  - name: unit_qc_threshold
+    type: enum
+    required: false
+    default: good_only
+    choices: [all, good_only, custom]
+    question:
+      ask: Which units should be included?
+      explain: >
+        good_only respects the NWB Units.quality column when present.
+        Use 'all' only for exploratory checks where you accept unsorted units.
+
+validation:
+  checks:
+    - manifest_has_neural_data_spikes
+    - alignment_event_present_in_manifest
+    - window_lengths_positive
+
+assumptions:
+  - Spike times and event times share a clock.
+failure_modes:
+  - Misaligned clocks create false event-locked structure.

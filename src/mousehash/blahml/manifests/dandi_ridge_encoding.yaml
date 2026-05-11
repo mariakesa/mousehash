@@ -1,0 +1,79 @@
+id: dandi_ridge_encoding
+version: 0.1.0
+display_name: Fit Ridge Encoding Model
+workflow_family: encoding_decoding
+priority: MVP
+
+description:
+  short: Linear encoding model predicting neural responses from stimulus features.
+  long: >
+    Ridge-regularized linear mapping from a stimulus feature matrix to per-neuron
+    responses. With ViT embeddings as features this gives a strong baseline for
+    visual-system encoding.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.fit_ridge_encoding
+  input_model: RidgeEncodingSpec
+  output_artifact: RidgeEncodingArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which manifest does this encoding model use?
+      explain: Must include stimuli, neural_data, and time_organization.
+
+parameters:
+  - name: feature_space
+    type: enum
+    required: true
+    choices: [vit_b16_imagenet, clip_b32, raw_pixels, custom]
+    question:
+      ask: Which stimulus feature space should be used as predictors?
+      explain: >
+        ViT/CLIP embeddings work well for natural-scene tuning; raw pixels
+        are simpler but only useful for low-level visual structure.
+
+  - name: response_window_s
+    type: float
+    required: false
+    default: 0.3
+    range: {min: 0.05, max: 5.0}
+    question:
+      ask: Width of the post-stimulus response window in seconds.
+      explain: Average spike count inside this window becomes the regression target.
+
+  - name: ridge_alpha
+    type: float
+    required: false
+    default: 1.0
+    range: {min: 0.0001, max: 1000.0}
+    question:
+      ask: Ridge regularization strength alpha.
+      explain: Use cross-validation to choose; the default works for ~1k-D features.
+
+  - name: k_folds
+    type: integer
+    required: false
+    default: 5
+    range: {min: 2, max: 20}
+    question:
+      ask: Number of CV folds.
+      explain: 5 folds is the conventional baseline; raise to 10 for more conservative estimates.
+
+  - name: split_unit
+    type: enum
+    required: true
+    choices: [stimulus, session]
+    question:
+      ask: Exchangeable split unit.
+      explain: Split by stimulus to keep repeated images out of both folds.
+
+validation:
+  checks:
+    - manifest_has_stimuli
+    - manifest_has_neural_data
+    - feature_space_compatible_with_stimuli
+    - splits_respect_stimulus_repeats

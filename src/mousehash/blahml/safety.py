@@ -97,12 +97,52 @@ def _leakage_warning_if_fit_scope_full_dataset(
     return []
 
 
+def _dandi_stub_check(
+    manifest: BlahManifest, resolved: ResolvedSpec, ctx: dict
+) -> list[SafetyFinding]:
+    """No-op stub for DANDI-agent checks scheduled for MVP-2.
+
+    Returning ``[]`` means "no findings". When MVP-2 lands, replace these with
+    real validators that inspect the resolved spec + manifest context.
+    """
+    return []
+
+
+_DANDI_AGENT_CHECKS = (
+    "manifest_has_neural_data",
+    "manifest_has_neural_data_spikes",
+    "manifest_has_time_organization",
+    "manifest_has_time_organization_trials",
+    "manifest_has_stimuli",
+    "manifest_has_conditions",
+    "alignment_event_present_in_manifest",
+    "window_lengths_positive",
+    "bin_size_compatible_with_firing_rate",
+    "per_condition_trial_count_at_least_5",
+    "label_column_present_in_trials",
+    "per_class_trial_count_at_least_10",
+    "permutation_null_planned",
+    "splits_respect_stimulus_repeats",
+    "train_only_scaling_enforced",
+    "feature_space_compatible_with_stimuli",
+    "matched_items_across_conditions",
+    "matched_items_across_rdms",
+    "permutation_unit_declared",
+    "condition_repeat_count_check",
+    "exchangeability_unit_consistent_with_design",
+    "per_fold_metric_reported",
+    "all_referenced_artifacts_exist",
+    "provenance_complete_for_every_move",
+)
+
+
 KNOWN_CHECKS: dict[str, CheckFn] = {
     "input_matrix_exists": _input_matrix_exists,
     "input_matrix_is_2d": _input_matrix_is_2d,
     "n_components_less_than_min_dimension": _n_components_less_than_min_dimension,
     "no_nan_or_policy_declared": _no_nan_or_policy_declared,
     "leakage_warning_if_fit_scope_full_dataset": _leakage_warning_if_fit_scope_full_dataset,
+    **{name: _dandi_stub_check for name in _DANDI_AGENT_CHECKS},
 }
 
 

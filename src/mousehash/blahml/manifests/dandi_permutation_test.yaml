@@ -1,0 +1,68 @@
+id: dandi_permutation_test
+version: 0.1.0
+display_name: Run Permutation Test
+workflow_family: statistics_validation
+priority: MVP
+
+description:
+  short: Generic shuffle-based null for any statistic computed from labels.
+  long: >
+    Recomputes an observed metric under label permutations to give an empirical
+    p-value. Shuffle must respect the exchangeability unit.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.run_permutation_test
+  input_model: PermutationTestSpec
+  output_artifact: PermutationTestArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which manifest is the test associated with?
+      explain: Used to record the test in the audit chain with the right dandiset / asset.
+
+  - name: source_artifact
+    type: artifact_ref
+    required: true
+    description: Path to the metric / tool-run artifact being tested.
+    accepted_artifact_types: [decoder_artifact, encoder_artifact, rsa_artifact, custom]
+    question:
+      ask: Which existing analysis artifact should the test wrap?
+      explain: The permutation test operates on an upstream metric.
+
+parameters:
+  - name: n_permutations
+    type: integer
+    required: false
+    default: 5000
+    range: {min: 100, max: 100000}
+    question:
+      ask: Number of shuffles for the null distribution.
+      explain: Provide a value compatible with the parameter's description; ask the agent if unsure.
+
+  - name: exchangeability_unit
+    type: enum
+    required: true
+    choices: [trial, stimulus, session, time_block]
+    question:
+      ask: Exchangeable unit for shuffling?
+      explain: >
+        Trial shuffles destroy event-locked structure; time_block shuffles
+        preserve autocorrelation. Pick the unit that respects your null
+        hypothesis.
+
+  - name: alternative
+    type: enum
+    required: false
+    default: two_sided
+    choices: [two_sided, greater, less]
+    question:
+      ask: Direction of the alternative hypothesis.
+      explain: Provide a value compatible with the parameter's description; ask the agent if unsure.
+
+validation:
+  checks:
+    - exchangeability_unit_consistent_with_design

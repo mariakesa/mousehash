@@ -1,0 +1,75 @@
+id: dandi_run_rsa
+version: 0.1.0
+display_name: Run Representational Similarity Analysis
+workflow_family: geometry
+priority: MVP
+
+description:
+  short: Compare a neural RDM against a target RDM with permutation statistics.
+  long: >
+    Pairs a neural dissimilarity matrix with a model/stimulus/condition matrix
+    and tests whether their structures agree beyond shuffle.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.run_rsa
+  input_model: RSASpec
+  output_artifact: RSAArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which manifest does this RSA use?
+      explain: Manifest must include neural_data plus stimuli/conditions/behavior for the target RDM.
+
+parameters:
+  - name: target_rdm_source
+    type: enum
+    required: true
+    choices: [stimulus_features, condition_one_hot, behavior_features, custom_artifact]
+    question:
+      ask: Where does the target RDM come from?
+      explain: >
+        stimulus_features uses ViT/CLIP embeddings. condition_one_hot tests
+        whether the population separates the categorical labels.
+
+  - name: item_grouping
+    type: string
+    required: true
+    question:
+      ask: Which column defines the items?
+      explain: Items must be matched 1:1 between the neural and target RDMs.
+
+  - name: distance_metric
+    type: enum
+    required: false
+    default: correlation
+    choices: [correlation, euclidean, cosine]
+    question:
+      ask: Distance metric used inside each RDM.
+      explain: Provide a value compatible with the parameter's description; ask the agent if unsure.
+
+  - name: rsa_correlation
+    type: enum
+    required: false
+    default: spearman
+    choices: [pearson, spearman, kendall_tau_a]
+    question:
+      ask: RDM-comparison correlation type.
+      explain: spearman is rank-based and the conventional RSA choice.
+
+  - name: n_permutations
+    type: integer
+    required: false
+    default: 5000
+    range: {min: 100, max: 100000}
+    question:
+      ask: Number of permutations for the null distribution.
+      explain: Provide a value compatible with the parameter's description; ask the agent if unsure.
+
+validation:
+  checks:
+    - matched_items_across_rdms
+    - permutation_unit_declared

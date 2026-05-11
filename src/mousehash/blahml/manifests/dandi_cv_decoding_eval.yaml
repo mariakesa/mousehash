@@ -1,0 +1,69 @@
+id: dandi_cv_decoding_eval
+version: 0.1.0
+display_name: Run Cross-Validated Decoding Evaluation
+workflow_family: encoding_decoding
+priority: MVP
+
+description:
+  short: Train/test evaluation harness for any classifier on a population matrix.
+  long: >
+    Wraps an arbitrary classifier with a leakage-safe split, train-only
+    normalization, and per-fold reporting.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.cv_decoding_eval
+  input_model: CVDecodingSpec
+  output_artifact: CVDecodingArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which manifest does the evaluation use?
+      explain: Must include neural_data + either conditions or behavior.
+
+parameters:
+  - name: classifier
+    type: enum
+    required: false
+    default: logistic_l2
+    choices: [logistic_l2, ridge_regression, linear_svm, random_forest]
+    question:
+      ask: Which classifier should be evaluated?
+      explain: >
+        logistic_l2 / ridge are the safest defaults. linear_svm gives margin
+        diagnostics. Random forests handle nonlinearities but obscure
+        feature importance.
+
+  - name: k_folds
+    type: integer
+    required: false
+    default: 5
+    range: {min: 2, max: 20}
+    question:
+      ask: Number of cross-validation folds.
+      explain: 5 folds is a good balance between bias and variance.
+
+  - name: split_unit
+    type: enum
+    required: true
+    choices: [trial, stimulus, session]
+    question:
+      ask: Exchangeable unit for the split?
+      explain: Choose by stimulus or session if your design repeats.
+
+  - name: metric
+    type: enum
+    required: false
+    default: balanced_accuracy
+    choices: [accuracy, balanced_accuracy, auc, f1]
+    question:
+      ask: Primary evaluation metric.
+      explain: balanced_accuracy is robust to class imbalance.
+
+validation:
+  checks:
+    - splits_respect_stimulus_repeats
+    - train_only_scaling_enforced

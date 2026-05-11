@@ -1,0 +1,64 @@
+id: dandi_latent_trajectory_plot
+version: 0.1.0
+display_name: Generate Latent Trajectory Plot
+workflow_family: dynamics
+priority: MVP
+
+description:
+  short: Plot of population state evolution in a low-dimensional latent space.
+  long: >
+    Projects trial-aligned binned activity onto a low-dimensional embedding
+    (PCA by default) and renders per-condition trajectories.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.generate_latent_trajectory_plot
+  input_model: LatentTrajectorySpec
+  output_artifact: LatentTrajectoryArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which manifest does this trajectory plot use?
+      explain: The manifest pins the neural data and event/trial structure.
+
+parameters:
+  - name: embedding_method
+    type: enum
+    required: false
+    default: pca
+    choices: [pca, factor_analysis, gpfa, custom]
+    question:
+      ask: Which dimensionality-reduction method to use?
+      explain: PCA is the safe default; GPFA gives smoother latents.
+
+  - name: alignment_event
+    type: enum
+    required: true
+    choices: [stimulus_onset, go_cue, choice, perturbation_onset]
+    question:
+      ask: Which event should trajectories align to?
+      explain: The choice of anchor defines what "time zero" means scientifically; pick the event the question is actually about.
+
+  - name: n_components
+    type: integer
+    required: false
+    default: 3
+    range: {min: 2, max: 10}
+    question:
+      ask: How many latent dimensions to plot?
+      explain: 2-3 components visualize cleanly; >3 needs subplots.
+
+  - name: condition_grouping
+    type: string
+    required: false
+    question:
+      ask: Which trial column groups the trajectories by color/style?
+      explain: Each unique value produces a separate trajectory in the plot.
+
+validation:
+  checks:
+    - manifest_has_neural_data
+    - manifest_has_time_organization

@@ -1,0 +1,59 @@
+id: dandi_noise_correlations
+version: 0.1.0
+display_name: Compute Noise Correlations
+workflow_family: connectivity
+priority: MVP
+
+description:
+  short: Pairwise residual trial-to-trial correlations after removing condition means.
+  long: >
+    Builds a stimulus x trial x neuron tensor, subtracts the per-stimulus mean,
+    and computes pairwise correlations of the residuals.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.compute_noise_correlations
+  input_model: NoiseCorrelationsSpec
+  output_artifact: NoiseCorrelationsArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which manifest should be used?
+      explain: Must include neural_data, conditions, and time_organization.
+
+parameters:
+  - name: condition_grouping
+    type: string
+    required: true
+    question:
+      ask: Which trial column defines the conditions whose means are subtracted?
+      explain: >
+        Picking the wrong grouping (e.g. one that doesn't actually identify the
+        repeated stimulus) leaves stimulus structure in the residuals.
+
+  - name: response_window_s
+    type: float
+    required: false
+    default: 0.4
+    range: {min: 0.05, max: 5.0}
+    question:
+      ask: Width of the response window per trial.
+      explain: Provide a value compatible with the parameter's description; ask the agent if unsure.
+
+  - name: min_trials_per_condition
+    type: integer
+    required: false
+    default: 5
+    range: {min: 2, max: 100}
+    question:
+      ask: Minimum repeats per condition to include.
+      explain: Conditions with fewer repeats produce unstable residual estimates.
+
+validation:
+  checks:
+    - manifest_has_neural_data
+    - manifest_has_conditions
+    - condition_repeat_count_check

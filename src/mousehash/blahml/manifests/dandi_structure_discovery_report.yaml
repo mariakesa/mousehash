@@ -1,0 +1,57 @@
+id: dandi_structure_discovery_report
+version: 0.1.0
+display_name: Generate Structure Discovery Report
+workflow_family: reporting
+priority: MVP
+
+description:
+  short: Aggregate role manifest, analysis moves, and artifacts into an audit bundle.
+  long: >
+    Compiles a single HTML/Markdown report that includes the role manifest
+    summary, every AnalysisMove that was run, links to artifacts, and the
+    transformation lineage for each result.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.generate_structure_discovery_report
+  input_model: StructureDiscoveryReportSpec
+  output_artifact: StructureDiscoveryReportArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which manifest should the report describe?
+      explain: The report aggregates every move ever run against this manifest, plus blocked tools.
+
+parameters:
+  - name: include_blocked_tools
+    type: boolean
+    required: false
+    default: true
+    question:
+      ask: Include a section listing blocked tools and what would unblock them?
+      explain: Provide a value compatible with the parameter's description; ask the agent if unsure.
+
+  - name: report_format
+    type: enum
+    required: false
+    default: html
+    choices: [html, markdown, pdf]
+    question:
+      ask: Output format.
+      explain: html is the most browseable; pdf is durable for sharing.
+
+  - name: include_provenance
+    type: boolean
+    required: false
+    default: true
+    question:
+      ask: Include code/version provenance per analysis move?
+      explain: Required for reproducible scientific reports.
+
+validation:
+  checks:
+    - all_referenced_artifacts_exist
+    - provenance_complete_for_every_move

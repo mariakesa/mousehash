@@ -1,0 +1,90 @@
+id: dandi_logistic_decoder
+version: 0.1.0
+display_name: Fit Logistic Decoder
+workflow_family: encoding_decoding
+priority: MVP
+
+description:
+  short: Binary classifier predicting a trial label from population activity.
+  long: >
+    Logistic regression on observations x neurons predicting a binary label.
+    Returns cross-validated accuracy with a permutation null. Train/test
+    splits must keep repeated stimuli together.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.fit_logistic_decoder
+  input_model: LogisticDecoderSpec
+  output_artifact: LogisticDecoderArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which role manifest should the decoder use?
+      explain: Manifest must include neural_data plus one of conditions or behavior.
+
+parameters:
+  - name: label_column
+    type: string
+    required: true
+    question:
+      ask: Which trial column carries the binary label?
+      explain: >
+        The decoder needs a label per trial. Common choices: trial_instruction,
+        choice, perturbation_on. Labels derived from outcomes risk leakage.
+
+  - name: alignment_event
+    type: enum
+    required: true
+    choices: [stimulus_onset, go_cue, choice, perturbation_onset]
+    question:
+      ask: Which event should be used to extract the response window?
+      explain: >
+        The decoder reads activity in a window around this event. Pick an
+        event aligned to the question — e.g. go_cue for motor decoding.
+
+  - name: response_window_s
+    type: float
+    required: false
+    default: 0.4
+    range: {min: 0.05, max: 5.0}
+    question:
+      ask: Width of the response window in seconds.
+      explain: Wider windows average more spikes; narrower windows isolate epochs.
+
+  - name: k_folds
+    type: integer
+    required: false
+    default: 5
+    range: {min: 2, max: 20}
+    question:
+      ask: Number of cross-validation folds.
+      explain: 5 is standard; 10 is more conservative.
+
+  - name: split_unit
+    type: enum
+    required: true
+    choices: [trial, stimulus, session]
+    question:
+      ask: What is the exchangeable unit for the split?
+      explain: >
+        Random splits at the trial level can leak when stimuli repeat —
+        split by stimulus or session instead if your design has repeats.
+
+  - name: regularization
+    type: enum
+    required: false
+    default: l2
+    choices: [none, l1, l2, elasticnet]
+    question:
+      ask: Regularization for the logistic model.
+      explain: l2 (ridge) is a safe default; l1 (lasso) yields sparser weights.
+
+validation:
+  checks:
+    - manifest_has_neural_data
+    - label_column_present_in_trials
+    - per_class_trial_count_at_least_10
+    - permutation_null_planned

@@ -1,0 +1,338 @@
+# MouseHash MVP-14 tool catalog.
+#
+# Schema: each entry conforms to ToolSpec (see models.py).
+# Subset chosen per mousehash_tools_spec.md §9 — robust, broadly useful, easy to inspect.
+
+catalog_version: "0.1.0"
+
+tools:
+
+  - tool_id: generate_raster_plot
+    name: Generate Raster Plot
+    workflow_family: visualization
+    requires_roles:
+      all_of: [neural_data.spikes, time_organization]
+    optional_roles: [conditions, stimuli, behavior, metadata]
+    target_subcategories: [unit_event_timing]
+    requires_view: "trials x spike/event times"
+    default_transformation_path:
+      - select_good_units
+      - align_to_stimulus_onset
+      - extract_response_window
+      - make_trial_by_time_by_neuron_tensor
+    assumptions:
+      - "Spike times and trial/event timestamps share a clock."
+    failure_modes:
+      - "Misaligned clocks create false task timing structure."
+    validation_checks:
+      - "Plot event timestamps overlaid on trials."
+      - "Check units have non-empty spike_times."
+    output_artifacts: [raster_figure, source_table]
+    mvp_priority: mvp
+    has_visualization: true
+    question: "When do units fire relative to task events?"
+
+  - tool_id: generate_psth_plot
+    name: Generate PSTH Plot
+    workflow_family: visualization
+    requires_roles:
+      all_of: [neural_data.spikes, time_organization]
+    optional_roles: [conditions, stimuli, behavior, metadata]
+    target_subcategories: [trial_locked_rates]
+    requires_view: "condition/trial x time bins -> firing rate"
+    default_transformation_path:
+      - select_good_units
+      - align_to_stimulus_onset
+      - extract_response_window
+      - bin_spikes
+      - gaussian_smooth_psth
+      - average_trials_by_condition
+    assumptions:
+      - "Task events identify comparable alignment points across trials."
+    failure_modes:
+      - "Averaging across incompatible trial types hides selectivity."
+    validation_checks:
+      - "Bootstrap CIs over trials."
+      - "Report trial counts per condition."
+    output_artifacts: [psth_figure, rate_table]
+    mvp_priority: mvp
+    has_visualization: true
+    question: "How does firing rate evolve across conditions and task epochs?"
+
+  - tool_id: run_pca
+    name: Run PCA on Neural Activity
+    workflow_family: factor_modeling
+    requires_roles:
+      all_of: [neural_data]
+    optional_roles: [conditions, time_organization, metadata]
+    requires_view: "observations x neurons"
+    default_transformation_path:
+      - select_good_units
+      - bin_spikes
+      - make_population_state_matrix
+      - zscore_neurons
+      - pca_transform
+    assumptions:
+      - "Observation axis is explicit."
+    failure_modes:
+      - "Trial-averaging before splitting can leak test data into exploratory PCA."
+    validation_checks:
+      - "Report explained variance and observation count."
+    output_artifacts: [pca_scores, pca_loadings, explained_variance]
+    mvp_priority: mvp
+
+  - tool_id: run_trial_averaged_pca
+    name: Run Trial-Averaged PCA
+    workflow_family: factor_modeling
+    requires_roles:
+      all_of: [neural_data, conditions, time_organization]
+    optional_roles: [stimuli, behavior, metadata]
+    requires_view: "condition x time x neurons or condition x neurons"
+    default_transformation_path:
+      - select_good_units
+      - align_to_stimulus_onset
+      - extract_task_epoch_windows
+      - bin_spikes
+      - average_trials_by_condition
+      - zscore_neurons
+      - make_condition_by_time_by_neuron_tensor
+      - pca_transform
+    assumptions:
+      - "Enough trials per condition to average meaningfully."
+    failure_modes:
+      - "Few units make PCA fragile."
+    validation_checks:
+      - "Bootstrap over trials."
+      - "Report explained variance and trial counts."
+    output_artifacts: [pca_scores, pca_loadings, explained_variance, trajectory_plot]
+    mvp_priority: mvp
+    has_visualization: true
+    question: "What low-dimensional population structure appears across task phases?"
+
+  - tool_id: fit_logistic_decoder
+    name: Fit Logistic Decoder
+    workflow_family: encoding_decoding
+    requires_roles:
+      all_of: [neural_data, time_organization]
+      any_of:
+        - [conditions, behavior]
+    optional_roles: [stimuli, metadata]
+    requires_view: "observations x neurons -> binary label"
+    default_transformation_path:
+      - select_good_units
+      - align_to_stimulus_onset
+      - extract_response_window
+      - bin_spikes
+      - mean_response_in_window
+      - assign_condition_labels
+      - k_fold_split
+      - zscore_train_only
+    assumptions:
+      - "Choice/condition labels are correctly mapped to binary classes."
+    failure_modes:
+      - "Outcome-derived labels can leak behavioral timing into neural labels."
+    validation_checks:
+      - "Cross-validated accuracy."
+      - "Permutation label shuffle."
+      - "Confusion matrix."
+    output_artifacts: [classifier, accuracy, confusion_matrix]
+    mvp_priority: mvp
+    leakage_risk: medium
+    question: "Can population activity decode a binary trial label?"
+
+  - tool_id: cv_decoding_eval
+    name: Run Cross-Validated Decoding Evaluation
+    workflow_family: encoding_decoding
+    requires_roles:
+      all_of: [neural_data, time_organization]
+      any_of:
+        - [conditions, behavior]
+    optional_roles: [stimuli, metadata]
+    requires_view: "train/test observation splits"
+    default_transformation_path:
+      - assign_condition_labels
+      - k_fold_split
+      - zscore_train_only
+    assumptions:
+      - "Splits are leakage-safe with respect to repeated stimuli / trials."
+    failure_modes:
+      - "Random splits leak across trials when stimuli repeat."
+    validation_checks:
+      - "Report per-fold metrics and split identity."
+    output_artifacts: [cv_accuracy, auc, confusion_matrix]
+    mvp_priority: mvp
+    leakage_risk: medium
+
+  - tool_id: fit_ridge_encoding
+    name: Fit Ridge Encoding Model
+    workflow_family: encoding_decoding
+    requires_roles:
+      all_of: [stimuli, neural_data, time_organization]
+    optional_roles: [behavior, conditions, metadata]
+    requires_view: "observations x high-d features -> responses"
+    default_transformation_path:
+      - select_good_units
+      - align_to_stimulus_onset
+      - extract_response_window
+      - mean_response_in_window
+      - extract_vit_embeddings
+      - make_design_matrix
+      - k_fold_by_stimulus
+      - zscore_train_only
+    assumptions:
+      - "Stimulus features align with neural response observations."
+    failure_modes:
+      - "Train-fitted scalers must not be applied before split."
+    validation_checks:
+      - "Held-out R^2 / correlation."
+      - "Compare to permutation null."
+    output_artifacts: [ridge_weights, cv_scores, prediction_plots]
+    mvp_priority: mvp
+    leakage_risk: medium
+
+  - tool_id: cv_encoding_eval
+    name: Run Cross-Validated Encoding Evaluation
+    workflow_family: encoding_decoding
+    requires_roles:
+      all_of: [neural_data, time_organization]
+      any_of:
+        - [stimuli, behavior]
+    optional_roles: [conditions, metadata]
+    requires_view: "train/test observation splits"
+    default_transformation_path:
+      - k_fold_by_stimulus
+      - zscore_train_only
+    assumptions:
+      - "Splits respect stimulus / trial repeats."
+    validation_checks:
+      - "Per-fold metrics + leakage audit."
+    output_artifacts: [cv_metrics, split_manifest, leakage_checks]
+    mvp_priority: mvp
+    leakage_risk: medium
+
+  - tool_id: compute_rsm
+    name: Compute Representational Similarity Matrix
+    workflow_family: geometry
+    requires_roles:
+      all_of: [neural_data]
+    optional_roles: [conditions, stimuli, behavior, time_organization, metadata]
+    requires_view: "items x neurons -> items x items similarity"
+    default_transformation_path:
+      - select_good_units
+      - average_trials_by_condition
+      - compute_neural_rdm
+    assumptions:
+      - "Items are matched / identifiable across conditions."
+    failure_modes:
+      - "Distance metric choice changes interpretation."
+    validation_checks:
+      - "Record distance metric and item identities."
+    output_artifacts: [rsm, item_metadata]
+    mvp_priority: mvp
+
+  - tool_id: run_rsa
+    name: Run Representational Similarity Analysis
+    workflow_family: geometry
+    requires_roles:
+      all_of: [neural_data]
+      any_of:
+        - [stimuli, conditions, behavior]
+    optional_roles: [time_organization, metadata]
+    requires_view: "RSM_neural compared to RSM_target"
+    default_transformation_path:
+      - compute_neural_rdm
+      - compute_stimulus_rdm
+      - permutation_shuffle
+    assumptions:
+      - "Matched item identities across both RDMs."
+    failure_modes:
+      - "Few items / conditions yield noisy RDMs."
+    validation_checks:
+      - "Permutation test."
+      - "Bootstrap over trials or units."
+    output_artifacts: [rsa_correlation, p_values, plots]
+    mvp_priority: mvp
+
+  - tool_id: compute_noise_correlations
+    name: Compute Noise Correlations
+    workflow_family: connectivity
+    requires_roles:
+      all_of: [neural_data, conditions, time_organization]
+    optional_roles: [stimuli, behavior, metadata]
+    requires_view: "stimulus/condition x trial x neuron"
+    default_transformation_path:
+      - select_good_units
+      - align_to_stimulus_onset
+      - extract_response_window
+      - bin_spikes
+      - make_stimulus_by_trial_by_neuron_tensor
+      - subtract_stimulus_mean
+    assumptions:
+      - "Repeated trials exist per condition."
+    failure_modes:
+      - "Few units/trials make estimates unstable."
+    validation_checks:
+      - "Bootstrap CIs."
+      - "Compare against trial shuffle."
+    output_artifacts: [noise_correlation_matrix, qc_table]
+    mvp_priority: mvp
+
+  - tool_id: run_permutation_test
+    name: Run Permutation Test
+    workflow_family: statistics_validation
+    requires_roles:
+      all_of: [time_organization]
+      any_of:
+        - [conditions, behavior, stimuli]
+    optional_roles: [neural_data, metadata]
+    requires_view: "observed metric + shuffled null metrics"
+    default_transformation_path:
+      - permutation_shuffle
+      - save_analysis_artifact
+    assumptions:
+      - "Shuffle respects trial / session / temporal exchangeability."
+    failure_modes:
+      - "Naive shuffles destroy temporal structure or leak labels."
+    validation_checks:
+      - "Block shuffles by session / trial where appropriate."
+    output_artifacts: [null_distribution, p_value_table]
+    mvp_priority: mvp
+
+  - tool_id: generate_latent_trajectory_plot
+    name: Generate Latent Trajectory Plot
+    workflow_family: dynamics
+    requires_roles:
+      all_of: [neural_data, time_organization]
+    optional_roles: [conditions, behavior, metadata]
+    requires_view: "trial/condition x time x latent dimensions"
+    default_transformation_path:
+      - select_good_units
+      - align_to_stimulus_onset
+      - bin_spikes
+      - zscore_neurons
+      - make_trial_by_time_by_neuron_tensor
+      - pca_transform
+    output_artifacts: [trajectory_plot, latent_artifact]
+    mvp_priority: mvp
+    has_visualization: true
+    question: "How does population state evolve over time, by condition?"
+
+  - tool_id: generate_structure_discovery_report
+    name: Generate Structure Discovery Report
+    workflow_family: reporting
+    requires_roles:
+      all_of: [metadata]
+    optional_roles: [neural_data, stimuli, behavior, conditions, time_organization]
+    requires_view: "tool artifacts + role manifests -> report"
+    default_transformation_path:
+      - save_analysis_artifact
+    assumptions:
+      - "Every artifact has provenance and parameter records."
+    failure_modes:
+      - "A report without lineage becomes a notebook, not a scientific object."
+    validation_checks:
+      - "Each figure/metric links back to its manifest + transformation spec."
+    output_artifacts: [html_report, audit_bundle]
+    mvp_priority: mvp
+    has_visualization: true
+    question: "What did MouseHash infer, what can it analyze, and what evidence/provenance supports each move?"

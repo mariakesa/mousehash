@@ -1,0 +1,77 @@
+id: dandi_run_pca
+version: 0.1.0
+display_name: Run PCA on Neural Activity
+workflow_family: factor_modeling
+priority: MVP
+
+description:
+  short: Linear dimensionality reduction of a population activity matrix.
+  long: >
+    PCA on observations x neurons. Useful for inspecting low-dimensional
+    structure before fitting more complex models.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.run_pca
+  input_model: PCASpec
+  output_artifact: PCAArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    question:
+      ask: Which role manifest should PCA use?
+      explain: The manifest provides the neural data location and bin recipe.
+
+parameters:
+  - name: n_components
+    type: integer
+    required: false
+    default: 10
+    range: {min: 2, max: 200}
+    question:
+      ask: How many components should PCA keep?
+      explain: >
+        2-3 for visualization, 10-50 for downstream analyses. Components
+        explaining <1% variance are typically discarded.
+
+  - name: bin_size_ms
+    type: integer
+    required: false
+    default: 50
+    range: {min: 5, max: 1000}
+    question:
+      ask: At what time resolution should spikes be binned before PCA?
+      explain: >
+        Larger bins give more stable estimates per observation but blur
+        fast dynamics. 20-100 ms is common for awake cortex.
+
+  - name: scaling
+    type: enum
+    required: false
+    default: zscore_neurons
+    choices: [none, zscore_neurons, robust]
+    question:
+      ask: How should neurons be scaled before PCA?
+      explain: >
+        zscore puts neurons on a comparable scale so high-firing units
+        don't dominate components. 'none' keeps raw rates if you want
+        variance-weighted components.
+
+  - name: fit_scope
+    type: enum
+    required: true
+    choices: [exploratory_full_dataset, train_only]
+    question:
+      ask: Is this PCA exploratory, or fit on a train split only?
+      explain: >
+        Exploratory PCA may use all observations to help you browse. If
+        PCA is a feature step inside a predictive evaluation, fit it on
+        training data only to avoid test-set leakage.
+
+validation:
+  checks:
+    - manifest_has_neural_data
+    - n_components_less_than_min_dimension
+    - leakage_warning_if_fit_scope_full_dataset

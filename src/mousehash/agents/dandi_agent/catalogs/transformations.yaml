@@ -1,0 +1,367 @@
+# MouseHash transformation catalog.
+#
+# Schema: each entry conforms to TransformationSpec (see models.py).
+# Coverage: all 20 families from mousehash_transformations_spec.md §5,
+# with full population of families used by the MVP-14 tools (1, 3, 4, 5, 7, 9, 11, 13, 14, 16).
+
+catalog_version: "0.1.0"
+
+transformations:
+
+  # Family 1: selection / subsetting
+  - name: select_good_units
+    family: quality_control
+    purpose: Drop units flagged by recorded QC metrics (presence ratio, ISI, amplitude).
+    requires_roles: [neural_data, metadata]
+    produces_view_or_role: [filtered_role_bundle, selected_units_table]
+    parameters: {qc_field: required, threshold: required}
+    failure_modes: ["Removing units without documented criteria reduces reproducibility."]
+    validation_checks: ["Report units kept vs dropped per session."]
+    leakage_risk: low
+
+  - name: select_trials
+    family: selection_subsetting
+    purpose: Subset trials by condition, outcome, or experimenter exclusion.
+    requires_roles: [time_organization.trials]
+    produces_view_or_role: [selected_trials_table]
+    parameters: {trial_filter: required}
+    failure_modes: ["Selecting trials by outcome leaks labels into downstream decoders."]
+    leakage_risk: medium
+
+  # Family 3: alignment
+  - name: align_to_stimulus_onset
+    family: alignment
+    purpose: Re-reference time series to per-trial stimulus onset events.
+    requires_roles: [time_organization.events, time_organization.alignment_rules]
+    produces_view_or_role: [event_locked_time_base, aligned_neural_segments]
+    parameters: {event_field: required, window_pre_s: optional, window_post_s: optional}
+    assumptions: ["Stimulus and neural streams share or have a known clock map."]
+    failure_modes: ["Wrong event anchor changes scientific interpretation."]
+    leakage_risk: low
+
+  - name: align_to_choice
+    family: alignment
+    purpose: Align segments to behavioral choice / response onset.
+    requires_roles: [time_organization.events, behavior.choices]
+    produces_view_or_role: [event_locked_time_base]
+    failure_modes: ["Aligning to post-outcome variables can leak future information."]
+    leakage_risk: medium
+
+  - name: align_to_perturbation_onset
+    family: alignment
+    purpose: Align to optogenetic / electrical stimulation onset.
+    requires_roles: [time_organization.events, stimuli.interventions]
+    produces_view_or_role: [event_locked_time_base]
+    leakage_risk: low
+
+  # Family 4: segmentation / epoching
+  - name: extract_response_window
+    family: segmentation_epoching
+    purpose: Cut event-locked windows around the response epoch.
+    requires_roles: [time_organization.events]
+    produces_view_or_role: [event_locked_segments]
+    parameters: {window_pre_s: required, window_post_s: required}
+    leakage_risk: low
+
+  - name: extract_task_epoch_windows
+    family: segmentation_epoching
+    purpose: Cut sample / delay / response windows from continuous data.
+    requires_roles: [time_organization.events, conditions.session_phases]
+    produces_view_or_role: [epoch_table, event_locked_segments]
+    leakage_risk: low
+
+  # Family 5: binning / resampling
+  - name: bin_spikes
+    family: binning_resampling
+    purpose: Convert spike times into spike counts on a common time grid.
+    requires_roles: [neural_data.spikes, time_organization.continuous_time]
+    produces_view_or_role: [time_x_neuron_count_matrix, trial_x_time_x_neuron_tensor]
+    parameters: {bin_size_ms: required, smoothing_kernel: optional}
+    assumptions: ["Spike timestamps share a known clock with target events."]
+    failure_modes: ["Too-large bins blur event-locked effects; too-small bins produce sparse estimates."]
+    validation_checks: ["Check unit-level firing rates.", "Check spike count distributions."]
+    leakage_risk: low
+
+  - name: gaussian_smooth_psth
+    family: filtering_smoothing
+    purpose: Smooth binned spike counts with a Gaussian kernel.
+    requires_roles: [neural_data.spikes, time_organization.continuous_time]
+    produces_view_or_role: [smoothed_rate_matrix]
+    parameters: {sigma_ms: required}
+    failure_modes: ["Smoothing inflates apparent temporal correlation."]
+    leakage_risk: low
+
+  # Family 6: filtering (LFP placeholder)
+  - name: bandpass_filter_lfp
+    family: filtering_smoothing
+    purpose: Bandpass-filter LFP into a frequency band of interest.
+    requires_roles: [neural_data.lfp, time_organization.continuous_time]
+    produces_view_or_role: [band_limited_lfp]
+    parameters: {low_hz: required, high_hz: required}
+    leakage_risk: low
+
+  # Family 7: normalization / scaling
+  - name: zscore_neurons
+    family: normalization_scaling
+    purpose: Z-score per neuron over the observation axis.
+    requires_roles: [neural_data]
+    produces_view_or_role: [normalized_matrix]
+    failure_modes: ["Fitting on all data leaks test information for evaluative workflows."]
+    leakage_risk: medium
+
+  - name: zscore_train_only
+    family: normalization_scaling
+    purpose: Z-score using only training-split statistics.
+    requires_roles: [neural_data]
+    produces_view_or_role: [normalized_matrix, train_fitted_scaler]
+    leakage_risk: none
+    default_for_evaluation: true
+
+  - name: baseline_subtract
+    family: normalization_scaling
+    purpose: Subtract per-trial pre-stimulus baseline from event-locked responses.
+    requires_roles: [neural_data, time_organization.events]
+    produces_view_or_role: [baseline_corrected_tensor]
+    parameters: {baseline_window_s: required}
+    failure_modes: ["Baseline subtraction can remove sustained activity."]
+    leakage_risk: low
+
+  # Family 9: feature extraction
+  - name: extract_vit_embeddings
+    family: feature_extraction
+    purpose: Compute ViT embeddings for visual stimulus images.
+    requires_roles: [stimuli.sensory.visual]
+    produces_view_or_role: [stimulus_embedding_table]
+    parameters: {model_name: required, layer: optional}
+    failure_modes: ["Model-derived features import external semantic assumptions."]
+    provenance_required: [model_name, model_version, layer]
+    leakage_risk: low
+
+  - name: extract_pose_features
+    family: feature_extraction
+    purpose: Derive kinematic features from pose keypoints.
+    requires_roles: [behavior.pose]
+    produces_view_or_role: [behavior_feature_table]
+    leakage_risk: low
+
+  - name: extract_lfp_bandpower
+    family: feature_extraction
+    purpose: Compute per-band LFP power over time.
+    requires_roles: [neural_data.lfp]
+    produces_view_or_role: [neural_feature_matrix]
+    parameters: {bands: required}
+    leakage_risk: low
+
+  # Family 10: labeling
+  - name: assign_condition_labels
+    family: labeling_annotation
+    purpose: Assign per-trial condition / stimulus / outcome labels.
+    requires_roles: [time_organization.trials, conditions]
+    produces_view_or_role: [label_vector, trial_annotation_table]
+    failure_modes: ["Labels derived from future outcomes can leak information."]
+    leakage_risk: medium
+
+  - name: assign_perturbation_labels
+    family: labeling_annotation
+    purpose: Mark trials by stimulation overlap.
+    requires_roles: [stimuli.interventions, time_organization.trials]
+    produces_view_or_role: [label_vector]
+    leakage_risk: low
+
+  # Family 11: aggregation
+  - name: mean_response_in_window
+    family: aggregation_summarization
+    purpose: Average activity within a response window per observation.
+    requires_roles: [neural_data, time_organization.events]
+    produces_view_or_role: [summary_table, condition_x_neuron_matrix]
+    parameters: {window_pre_s: required, window_post_s: required}
+    leakage_risk: low
+
+  - name: average_trials_by_condition
+    family: aggregation_summarization
+    purpose: Average trial-aligned tensors over trials within condition.
+    requires_roles: [neural_data, conditions, time_organization.trials]
+    produces_view_or_role: [condition_x_time_x_neuron_tensor, condition_x_neuron_matrix]
+    failure_modes: ["Unequal trial counts can bias condition means."]
+    leakage_risk: low
+
+  # Family 12: residualization
+  - name: subtract_stimulus_mean
+    family: residualization_nuisance_removal
+    purpose: Remove per-condition mean response before correlation analyses.
+    requires_roles: [neural_data, conditions]
+    produces_view_or_role: [residual_tensor]
+    leakage_risk: low
+
+  # Family 13: splitting
+  - name: train_test_split
+    family: splitting_evaluation_resampling
+    purpose: Simple held-out split by observation.
+    requires_roles: []
+    produces_view_or_role: [split_identity, train_indices, test_indices]
+    parameters: {test_fraction: required, stratify_by: optional}
+    failure_modes: ["Random split leaks across repeated stimuli or trials."]
+    leakage_risk: medium
+
+  - name: k_fold_split
+    family: splitting_evaluation_resampling
+    purpose: K-fold cross-validation indices.
+    requires_roles: []
+    produces_view_or_role: [split_identity]
+    parameters: {k: required, stratify_by: optional}
+    leakage_risk: low
+    default_for_evaluation: true
+
+  - name: k_fold_by_stimulus
+    family: splitting_evaluation_resampling
+    purpose: K-fold splitting that keeps repeats of the same stimulus together.
+    requires_roles: [stimuli]
+    produces_view_or_role: [split_identity]
+    parameters: {k: required}
+    leakage_risk: none
+    default_for_evaluation: true
+
+  - name: time_blocked_split
+    family: splitting_evaluation_resampling
+    purpose: Contiguous time-block split for sequential data.
+    requires_roles: [time_organization.continuous_time]
+    produces_view_or_role: [split_identity]
+    parameters: {n_blocks: required}
+    leakage_risk: none
+
+  - name: permutation_shuffle
+    family: splitting_evaluation_resampling
+    purpose: Shuffle condition / label vectors for a null distribution.
+    requires_roles: []
+    produces_view_or_role: [null_sample_spec]
+    parameters: {n_permutations: required, exchangeability_unit: required}
+    leakage_risk: low
+
+  - name: bootstrap_resample
+    family: splitting_evaluation_resampling
+    purpose: Resample observations / trials / sessions for confidence intervals.
+    requires_roles: []
+    produces_view_or_role: [resample_indices]
+    parameters: {n_resamples: required, unit: required}
+    leakage_risk: low
+
+  # Family 14: tensorization
+  - name: make_population_state_matrix
+    family: tensorization_view_construction
+    purpose: Build an observations x neurons matrix from binned activity.
+    requires_roles: [neural_data]
+    produces_view_or_role: [population_state_matrix]
+    leakage_risk: low
+
+  - name: make_trial_by_time_by_neuron_tensor
+    family: tensorization_view_construction
+    purpose: Stack trial-aligned binned activity into a 3-D tensor.
+    requires_roles: [neural_data, time_organization.trials]
+    produces_view_or_role: [trial_x_time_x_neuron_tensor]
+    leakage_risk: low
+
+  - name: make_condition_by_time_by_neuron_tensor
+    family: tensorization_view_construction
+    purpose: Trial-averaged tensor for trial-averaged PCA / dPCA.
+    requires_roles: [neural_data, conditions, time_organization.trials]
+    produces_view_or_role: [condition_x_time_x_neuron_tensor]
+    leakage_risk: low
+
+  - name: make_stimulus_by_trial_by_neuron_tensor
+    family: tensorization_view_construction
+    purpose: Stimulus-grouped trial tensor for noise-correlation analyses.
+    requires_roles: [neural_data, stimuli, time_organization.trials]
+    produces_view_or_role: [stimulus_x_trial_x_neuron_tensor]
+    leakage_risk: low
+
+  - name: make_design_matrix
+    family: tensorization_view_construction
+    purpose: Build an observations x predictors design matrix for encoding models.
+    requires_roles: [stimuli, time_organization]
+    produces_view_or_role: [design_matrix]
+    leakage_risk: low
+
+  - name: make_lagged_design_matrix
+    family: tensorization_view_construction
+    purpose: Stack lagged feature columns for temporal models.
+    requires_roles: [stimuli, time_organization.continuous_time]
+    produces_view_or_role: [lagged_design_matrix]
+    parameters: {n_lags: required, lag_step: required}
+    leakage_risk: low
+
+  # Family 15: dimensional transformation
+  - name: pca_transform
+    family: dimensional_transformation
+    purpose: Project a population matrix onto its principal components.
+    requires_roles: [neural_data]
+    produces_view_or_role: [latent_matrix, component_scores]
+    parameters: {n_components: required}
+    leakage_risk: medium
+    default_for_exploration: true
+
+  - name: project_onto_semantic_axis
+    family: dimensional_transformation
+    purpose: Scalar projection onto a fitted semantic / category axis.
+    requires_roles: [neural_data]
+    produces_view_or_role: [projection_values]
+    leakage_risk: low
+
+  # Family 16: distance / similarity
+  - name: compute_neural_rdm
+    family: distance_similarity_construction
+    purpose: Pairwise condition-response distance matrix.
+    requires_roles: [neural_data, conditions]
+    produces_view_or_role: [representational_dissimilarity_matrix]
+    parameters: {distance_metric: required}
+    leakage_risk: low
+
+  - name: compute_stimulus_rdm
+    family: distance_similarity_construction
+    purpose: Pairwise distance matrix among stimulus features.
+    requires_roles: [stimuli]
+    produces_view_or_role: [representational_dissimilarity_matrix]
+    parameters: {distance_metric: required}
+    leakage_risk: low
+
+  - name: compute_kernel_matrix
+    family: distance_similarity_construction
+    purpose: Kernel / Gram matrix for CKA-style comparisons.
+    requires_roles: [neural_data]
+    produces_view_or_role: [kernel_matrix]
+    parameters: {kernel: required}
+    leakage_risk: low
+
+  # Family 17: event detection
+  - name: detect_calcium_events
+    family: event_detection
+    purpose: Detect transient events in calcium traces.
+    requires_roles: [neural_data.calcium]
+    produces_view_or_role: [event_table]
+    parameters: {threshold: required}
+    failure_modes: ["Detected events should be marked as derived, not raw."]
+    leakage_risk: low
+
+  # Family 18: coordinate / unit conversion
+  - name: frames_to_seconds
+    family: coordinate_unit_conversion
+    purpose: Convert frame indices to seconds using a frame-rate or frame-time table.
+    requires_roles: [time_organization.frames]
+    produces_view_or_role: [converted_table]
+    leakage_risk: none
+
+  # Family 19: missing-data handling
+  - name: align_only_complete_trials
+    family: missing_data_handling
+    purpose: Keep only trials whose required streams are complete.
+    requires_roles: []
+    produces_view_or_role: [complete_case_view, missingness_report]
+    leakage_risk: low
+
+  # Family 20: artifact packaging
+  - name: save_analysis_artifact
+    family: artifact_packaging
+    purpose: Persist a typed analysis artifact with provenance.
+    requires_roles: []
+    produces_view_or_role: [artifact_record, provenance_entry]
+    provenance_required: [tool_id, params_hash, view_id, code_version]
+    leakage_risk: none

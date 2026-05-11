@@ -1,0 +1,90 @@
+id: dandi_psth
+version: 0.1.0
+display_name: Generate PSTH Plot
+workflow_family: visualization
+priority: MVP
+
+description:
+  short: Peri-stimulus time histogram of firing rate by condition.
+  long: >
+    Bins spikes around an event, smooths with a Gaussian kernel, averages
+    by condition. Reveals event-locked rate modulation per population or
+    per neuron.
+
+tool_binding:
+  python_function: mousehash.agents.dandi_agent.runners.generate_psth_plot
+  input_model: PSTHSpec
+  output_artifact: PSTHArtifact
+
+inputs:
+  - name: manifest_path
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [role_manifest]
+    description: Path to the role manifest JSON.
+    question:
+      ask: Which role manifest does this PSTH correspond to?
+      explain: Use the manifest_path returned by parse_nwb_manifest.
+
+parameters:
+  - name: alignment_event
+    type: enum
+    required: true
+    choices: [stimulus_onset, go_cue, choice, perturbation_onset]
+    question:
+      ask: Which event should each trial align to?
+      explain: >
+        The event defines the time-zero of the PSTH. Different events answer
+        different scientific questions — stimulus_onset for sensory tuning,
+        go_cue for motor-prep, choice for decision-locked dynamics.
+
+  - name: bin_size_ms
+    type: integer
+    required: false
+    default: 20
+    range: {min: 1, max: 500}
+    question:
+      ask: What bin size (in ms) should the rate be computed at?
+      explain: >
+        Smaller bins (5-20 ms) show fast event-locked dynamics; larger bins
+        (50-100 ms) smooth over slow modulation. Too small relative to
+        firing rate produces sparse, noisy estimates.
+
+  - name: smoothing_sigma_ms
+    type: float
+    required: false
+    default: 25.0
+    range: {min: 0.0, max: 500.0}
+    question:
+      ask: Gaussian smoothing sigma in ms?
+      explain: >
+        Smoothing makes the PSTH visually cleaner but inflates apparent
+        temporal correlation. Set to 0 to see raw bin counts.
+
+  - name: condition_grouping
+    type: string
+    required: false
+    default: "trial_type"
+    question:
+      ask: Which trial column should group the conditions?
+      explain: >
+        Each unique value becomes a separate trace. Common choices:
+        trial_type, stimulus_id, trial_instruction, choice, perturbation.
+
+  - name: confidence_method
+    type: enum
+    required: false
+    default: bootstrap
+    choices: [none, sem, bootstrap]
+    question:
+      ask: How should per-condition confidence intervals be computed?
+      explain: >
+        Bootstrap is most honest because it respects per-trial variability.
+        sem is faster but assumes Gaussian errors. 'none' is a single line
+        only.
+
+validation:
+  checks:
+    - manifest_has_neural_data_spikes
+    - manifest_has_time_organization_trials
+    - bin_size_compatible_with_firing_rate
