@@ -6,6 +6,9 @@ mousehash_roles:
     - calcium
     - photometry
     - images
+    - current clamp
+    - voltage clamp
+    - patch clamp
 
   stimuli:
     sensory:
@@ -27,6 +30,7 @@ mousehash_roles:
     - pupil
     - kinematics
     - behavioral_states
+    - running
 
   conditions:
     - task_labels
@@ -34,6 +38,8 @@ mousehash_roles:
     - experimental_groups
     - brain_states
     - session_phases
+    - perturbation_labels
+    - session_phases (sample, delay, response)
 
   time_organization:
     - continuous_time
