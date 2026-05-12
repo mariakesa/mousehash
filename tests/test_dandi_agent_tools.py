@@ -36,9 +36,13 @@ def manifest_path() -> str:
     return payload["manifest_path"]
 
 
-def test_inspect_dandiset_without_metadata_points_at_parse() -> None:
+def test_inspect_dandiset_returns_structured_summary_or_error() -> None:
+    """Without a local metadata path, the tool either fetches from DANDI or
+    reports a clean network error. Either outcome is JSON with dandiset_id."""
     out = inspect_dandiset("000011")
-    assert "parse_nwb_manifest" in out
+    payload = json.loads(out)
+    assert payload["dandiset_id"] == "000011"
+    assert "error" in payload or "name" in payload
 
 
 def test_parse_nwb_manifest_persists_json(manifest_path: str) -> None:

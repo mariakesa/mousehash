@@ -1,3 +1,9 @@
 This is the Allen Brain Observatory manifest file path. 
 /home/maria/Documents/AllenBrainObservatory/brain_observatory_manifest.json
 Can you give the dFF timeseries plot of the cell 662275084
+
+
+claude --dangerously-skip-permissions
+
+# Browser chat (recommended)                                                  
+  /home/maria/mousehash/.venv/bin/python /home/maria/mousehash/scripts/run_dandi_agent.py --ui gradio

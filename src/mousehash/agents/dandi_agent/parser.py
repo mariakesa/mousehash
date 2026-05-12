@@ -58,6 +58,16 @@ _LEGACY_CONFIDENCE: dict[str, float] = {
     "low": 0.55,
 }
 
+# dandi_crawl uses a smaller status vocabulary ("likely", "present", "unknown").
+# Map it into the typed ``RoleStatus`` Literal.
+_LEGACY_STATUS: dict[str, RoleStatus] = {
+    "present": "present",
+    "likely": "likely_present",
+    "likely_present": "likely_present",
+    "absent": "absent",
+    "unknown": "unknown",
+}
+
 # Legacy (role, label) pairs from parse_mousehash_nwb_manifest into the
 # canonical taxonomy paths. Labels not listed pass through unchanged.
 _LABEL_NORMALIZATION: dict[str, str] = {
@@ -164,10 +174,11 @@ def parse_dandiset_metadata(metadata: dict[str, Any]) -> list[EvidenceItem]:
     for _, row in evidence_df.iterrows():
         role_path = _LABEL_NORMALIZATION.get(row["role"], row["role"])
         conf = _LEGACY_CONFIDENCE.get(row["confidence"], 0.55)
+        status = _LEGACY_STATUS.get(row["status"], "likely_present")
         items.append(
             EvidenceItem(
                 role_path=role_path,
-                status=row["status"],
+                status=status,
                 confidence=conf,
                 source="dandiset_metadata",
                 field=row["source"],

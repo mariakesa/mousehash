@@ -18,6 +18,10 @@ from mousehash.agents.dandi_agent.catalogs.loaders import (
     load_transformations,
     tools_catalog_version,
 )
+from mousehash.agents.dandi_agent.fetcher import (
+    DEFAULT_MAX_SIZE_BYTES,
+    fetch_dandiset,
+)
 from mousehash.agents.dandi_agent.models import EvidenceBackedRoleManifest
 from mousehash.agents.dandi_agent.parser import parse_mousehash_roles
 from mousehash.agents.dandi_agent.readiness import (
@@ -106,35 +110,112 @@ def _register_manifest_row(
 def inspect_dandiset(dandiset_id: str, metadata_path: str = "") -> str:
     """Summarize what is known about a DANDI dandiset before parsing NWB files.
 
+    If no ``metadata_path`` is supplied, this fetches the dandiset's metadata
+    from the DANDI API (caching it under ``DATA_ROOT/dandi_agent/metadata/``)
+    and returns a structured summary.
+
     Args:
         dandiset_id: DANDI identifier, e.g. ``"000011"``.
         metadata_path: Optional path to a pre-fetched dandiset metadata JSON.
-            If empty, this returns a placeholder pointing the user at
-            ``parse_nwb_manifest`` instead.
+            If empty, the DANDI API is queried directly.
     """
     metadata = _load_metadata(metadata_path or None)
+    resolved_path = metadata_path
     if metadata is None:
-        return (
-            f"No metadata path supplied for dandiset {dandiset_id}. "
-            f"Use parse_nwb_manifest(dandiset_id, nwb_path=...) to build the "
-            f"role manifest directly from a local NWB file."
-        )
+        try:
+            result = fetch_dandiset(dandiset_id)
+        except Exception as exc:  # network / id errors
+            return json.dumps(
+                {"dandiset_id": dandiset_id, "error": f"could not resolve via DANDI: {exc}"},
+                indent=2,
+            )
+        metadata = json.loads(result.metadata_path.read_text())
+        resolved_path = str(result.metadata_path)
     keys = sorted(metadata.keys())
     summary = metadata.get("assetsSummary", {}) or {}
     return json.dumps(
         {
             "dandiset_id": dandiset_id,
-            "metadata_path": metadata_path,
+            "metadata_path": resolved_path,
             "name": metadata.get("name", ""),
             "n_subjects": summary.get("numberOfSubjects"),
             "n_files": summary.get("numberOfFiles"),
-            "variable_measured": summary.get("variableMeasured", []),
-            "measurement_technique": summary.get("measurementTechnique", []),
-            "approach": summary.get("approach", []),
+            "variable_measured": [
+                v.get("name") if isinstance(v, dict) else v
+                for v in summary.get("variableMeasured", []) or []
+            ],
+            "measurement_technique": [
+                v.get("name") if isinstance(v, dict) else v
+                for v in summary.get("measurementTechnique", []) or []
+            ],
+            "approach": [
+                v.get("name") if isinstance(v, dict) else v
+                for v in summary.get("approach", []) or []
+            ],
             "top_level_keys": keys,
         },
         indent=2,
         default=str,
+    )
+
+
+def analyze_dandiset(dandiset_id: str, max_size_mb: int = 500) -> str:
+    """Fetch a representative NWB from DANDI and build its role manifest in one step.
+
+    This is the right tool to call when the user mentions a dandiset id and
+    nothing else. The fetcher caches every download, so re-running the same
+    dandiset_id is a no-op after the first call.
+
+    Args:
+        dandiset_id: DANDI identifier, e.g. ``"000011"`` or ``"DANDI:000011"``.
+        max_size_mb: Refuse to download any single .nwb larger than this many MB
+            (default 500). The agent should not raise this above ~2000 without
+            checking with the user first.
+
+    Returns:
+        A JSON summary with manifest_id, the on-disk manifest path, role counts,
+        the selected asset, and a ``cached`` flag.
+    """
+    try:
+        fetch = fetch_dandiset(
+            dandiset_id, max_size_bytes=int(max_size_mb) * 1024 * 1024
+        )
+    except Exception as exc:
+        return json.dumps(
+            {"dandiset_id": dandiset_id, "error": f"fetch failed: {exc}"}, indent=2
+        )
+
+    metadata = json.loads(fetch.metadata_path.read_text())
+    manifest = parse_mousehash_roles(
+        dandiset_id=fetch.dandiset_id,
+        dandiset_metadata=metadata,
+        nwb_path=str(fetch.nwb_path),
+        asset_id=fetch.asset.asset_id,
+        catalog_version=tools_catalog_version(),
+    )
+    manifest_id, manifest_path = _persist_manifest(manifest)
+    _register_manifest_row(manifest, manifest_id, manifest_path)
+
+    return json.dumps(
+        {
+            "dandiset_id": fetch.dandiset_id,
+            "version_id": fetch.version_id,
+            "asset_id": fetch.asset.asset_id,
+            "asset_path": fetch.asset.asset_path,
+            "asset_size_bytes": fetch.asset.size_bytes,
+            "asset_units_only": fetch.asset.units_only,
+            "nwb_local_path": str(fetch.nwb_path),
+            "metadata_path": str(fetch.metadata_path),
+            "download_cached": fetch.cached,
+            "manifest_id": manifest_id,
+            "manifest_path": str(manifest_path),
+            "n_role_paths": len(manifest.roles),
+            "n_present": sum(1 for r in manifest.roles.values() if r.status == "present"),
+            "n_likely_present": sum(1 for r in manifest.roles.values() if r.status == "likely_present"),
+            "n_derived_possible": sum(1 for r in manifest.roles.values() if r.status == "derived_possible"),
+            "warnings": manifest.warnings,
+        },
+        indent=2,
     )
 
 

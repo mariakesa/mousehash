@@ -5,6 +5,7 @@ from __future__ import annotations
 from smolagents import tool
 
 from mousehash.agents.dandi_agent.agent_tools import (
+    analyze_dandiset as _analyze_dandiset,
     explain_blocked_tools as _explain_blocked_tools,
     inspect_dandiset as _inspect_dandiset,
     list_paper_evidence as _list_paper_evidence,
@@ -15,6 +16,7 @@ from mousehash.agents.dandi_agent.agent_tools import (
 )
 
 inspect_dandiset = tool(_inspect_dandiset)
+analyze_dandiset = tool(_analyze_dandiset)
 parse_nwb_manifest = tool(_parse_nwb_manifest)
 show_role_manifest = tool(_show_role_manifest)
 suggest_analyses = tool(_suggest_analyses)
@@ -24,6 +26,7 @@ list_paper_evidence = tool(_list_paper_evidence)
 
 DANDI_AGENT_TOOLS = [
     inspect_dandiset,
+    analyze_dandiset,
     parse_nwb_manifest,
     show_role_manifest,
     suggest_analyses,
@@ -35,6 +38,7 @@ DANDI_AGENT_TOOLS = [
 __all__ = [
     "DANDI_AGENT_TOOLS",
     "inspect_dandiset",
+    "analyze_dandiset",
     "parse_nwb_manifest",
     "show_role_manifest",
     "suggest_analyses",

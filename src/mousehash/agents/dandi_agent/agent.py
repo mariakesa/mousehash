@@ -16,11 +16,18 @@ dataset by inspecting NWB files, building an EvidenceBackedRoleManifest, and \
 suggesting AnalysisMoves that are reproducible, leakage-safe, and auditable.
 
 Workflow:
+  0. If the user gives you a bare dandiset id ("000011", "DANDI:000011")
+     and no local NWB path:
+       Call analyze_dandiset(dandiset_id). This fetches the dandiset metadata,
+       picks a small representative NWB (preferring units-only), downloads it
+       to the local cache, and builds the role manifest in one step. Re-runs
+       are cached so it's safe to call again.
   1. inspect_dandiset(dandiset_id, metadata_path)
-       Get a coarse summary from DANDI metadata if available.
+       Get a coarse summary from DANDI metadata without parsing an NWB.
+       Useful when the user just wants to know what's in a dandiset.
   2. parse_nwb_manifest(dandiset_id, nwb_path, ...)
-       Build a typed role manifest from the actual NWB structure.
-       The returned manifest_path is the handle for every later call.
+       Build a typed role manifest from a SPECIFIC local NWB file. Use this
+       when the user gives you an explicit file path on disk.
   3. show_role_manifest(manifest_path)
        Show the user what was inferred and how confidently.
   4. suggest_analyses(manifest_path, top_k=10)
