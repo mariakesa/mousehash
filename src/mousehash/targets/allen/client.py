@@ -35,20 +35,27 @@ def require_allensdk():
     return BrainObservatoryCache
 
 
+_MANIFEST_PATH_ENV_VARS = ("ALLEN_MANIFEST_PATH", "ALLEN_DATA")
+
+
 def resolve_manifest_path(manifest_path: Path | str | None = None) -> Path:
     """Resolve the BrainObservatoryCache manifest JSON path.
 
-    Precedence: explicit arg > ALLEN_MANIFEST_PATH env > raise.
+    Precedence: explicit arg > ALLEN_MANIFEST_PATH env > ALLEN_DATA env > raise.
+
+    `ALLEN_DATA` is accepted as an alias for backwards compatibility with the
+    prior MouseHash pipeline.
     """
     if manifest_path is not None:
         return Path(manifest_path).expanduser().resolve()
     _load_dotenv_once()
-    env = os.environ.get("ALLEN_MANIFEST_PATH")
-    if env:
-        return Path(env).expanduser().resolve()
+    for var in _MANIFEST_PATH_ENV_VARS:
+        value = os.environ.get(var)
+        if value:
+            return Path(value).expanduser().resolve()
     raise MouseHashError(
         "AllenSDK manifest path is unset. Pass manifest_path explicitly "
-        "or set ALLEN_MANIFEST_PATH in your .env."
+        "or set ALLEN_MANIFEST_PATH (preferred) or ALLEN_DATA in your .env."
     )
 
 

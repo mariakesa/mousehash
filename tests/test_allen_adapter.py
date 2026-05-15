@@ -46,6 +46,26 @@ class TestResolveManifestPath:
         with pytest.raises(MouseHashError, match="manifest path"):
             resolve_manifest_path()
 
+    def test_allen_data_accepted_as_alias(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+        # Only ALLEN_DATA is set; ALLEN_MANIFEST_PATH unset.
+        env_path = tmp_path / "alias.json"
+        monkeypatch.setenv("ALLEN_DATA", str(env_path))
+        from mousehash.artifacts import paths as _paths
+        _paths._load_dotenv_once.cache_clear()
+        assert resolve_manifest_path() == env_path.resolve()
+
+    def test_allen_manifest_path_preferred_over_alias(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    ):
+        # Both set; ALLEN_MANIFEST_PATH wins.
+        primary = tmp_path / "primary.json"
+        alias = tmp_path / "alias.json"
+        monkeypatch.setenv("ALLEN_MANIFEST_PATH", str(primary))
+        monkeypatch.setenv("ALLEN_DATA", str(alias))
+        from mousehash.artifacts import paths as _paths
+        _paths._load_dotenv_once.cache_clear()
+        assert resolve_manifest_path() == primary.resolve()
+
 
 # ---------- AllenAdapter Protocol compliance ----------
 
