@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mousehash"
+version = "0.2.0"
+description = "FastMCP-powered neuroscience workflow system over Allen, IBL, and DANDI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Maria Kesa", email = "mariarosekesa@gmail.com" }]
+dependencies = [
+    "pydantic>=2.6",
+    "PyYAML>=6",
+    "typing-extensions>=4.10",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+mcp = ["fastmcp>=0.2"]
+dandi = ["dandi>=0.62", "pynwb>=2.8", "h5py>=3.10", "remfile>=0.1"]
+allen = [
+    "allensdk @ git+https://github.com/AllenInstitute/AllenSDK.git",
+    "Pillow>=10",
+]
+ibl = ["ONE-api>=2.7"]
+science = [
+    "numpy>=1.26,<3",
+    "scipy>=1.11",
+    "scikit-learn>=1.2",
+    "pandas>=2.2,<3",
+    "pyarrow>=15",
+]
+ml = ["torch>=2.1", "transformers>=4.40,<5"]
+viz = ["plotly>=5.9"]
+provenance = ["datajoint>=0.14"]
+allen_v0 = [
+    "mousehash[allen,science,ml,viz]",
+]
+dev = ["pytest>=8", "ruff>=0.5", "black>=24"]
+
+[project.urls]
+Homepage = "https://github.com/mariakesa/mousehash"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mousehash = ["py.typed"]
+"mousehash.transformations" = ["imagenet1000_clsidx_to_labels.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tests that run real ViT / AllenSDK and take many seconds",
+]
+addopts = "-ra"
+filterwarnings = [
+    "ignore::DeprecationWarning:plotly",
+]

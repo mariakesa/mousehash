@@ -207,6 +207,8 @@ marimo/_lsp/
 __marimo__/
 
 notes.txt
-/src/DANDI-agent/dandi_nwb_cache
+old_code/src/DANDI-agent/dandi_nwb_cache
 
-/src/DANDI-agent/dandi_metadata_dump
+old_code/src/DANDI-agent/dandi_metadata_dump
+
+old_code/ophys_experiment_data
