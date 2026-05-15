@@ -18,8 +18,8 @@ from typing import Any
 
 import numpy as np
 
-from mousehash.artifacts.io import save_json, save_npy
-from mousehash.artifacts.paths import representations_root
+from mousehash.artifacts.cache import ComputationSpec, cached_computation, fingerprint_array
+from mousehash.artifacts.io import save_npy
 from mousehash.core.analysis_view import AnalysisView, AnalysisViewKind
 from mousehash.core.ids import ManifestId
 from mousehash.transformations.labeling import derive_animate_inanimate, derive_top1
@@ -128,80 +128,102 @@ def extract_vit_features_view(
 ) -> tuple[AnalysisView, dict[str, Any]]:
     """Run ViT and package the result as an observation_by_feature AnalysisView.
 
-    Side effect: saves logits.npy, probabilities.npy, top1.npy,
-    animate_inanimate.npy, and summary.json under
-    `<artifact_root>/representations/<scene_set_id>/<representation_spec_id>/`.
+    The output directory is content-addressed via `cached_computation`: same
+    `(scene_set_id, model_name, animate_threshold, frames)` -> same on-disk
+    location, and a second call is a cache hit (no ViT re-run).
+
+    `representation_spec_id` is informational only — it does not affect the
+    cache key, so re-tagging the same computation doesn't fragment the cache.
 
     Returns:
         view:   AnalysisView pointing at the feature artifact directory.
         bundle: dict carrying the raw arrays + paths for downstream tools.
+                Has a `from_cache` flag for callers that care.
     """
-    logger.info(
-        "Running ViT (%s, device=%s, batch=%d) on %d frames",
-        model_name, device, batch_size, len(frames),
-    )
-    logits, probabilities = run_vit_on_frames(
-        frames, model_name=model_name, batch_size=batch_size, device=device
-    )
-    top1 = derive_top1(probabilities)
-    animate_inanimate = derive_animate_inanimate(top1, animate_threshold)
-
-    out_dir = representations_root() / scene_set_id / representation_spec_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    logits_path = save_npy(out_dir / "logits.npy", logits)
-    probs_path = save_npy(out_dir / "probabilities.npy", probabilities)
-    top1_path = save_npy(out_dir / "top1.npy", top1)
-    ai_path = save_npy(out_dir / "animate_inanimate.npy", animate_inanimate)
-
-    n_animate = int(animate_inanimate.sum())
-    summary = {
-        "scene_set_id": scene_set_id,
-        "representation_spec_id": representation_spec_id,
-        "model_name": model_name,
-        "device": device,
-        "batch_size": int(batch_size),
-        "animate_threshold": int(animate_threshold),
-        "n_images": int(len(frames)),
-        "n_classes": int(logits.shape[1]),
-        "n_animate": n_animate,
-        "n_inanimate": int(len(frames) - n_animate),
-        "artifacts": {
-            "logits": str(logits_path),
-            "probabilities": str(probs_path),
-            "top1": str(top1_path),
-            "animate_inanimate": str(ai_path),
-        },
-    }
-    summary_path = save_json(out_dir / "summary.json", summary)
-
-    view = AnalysisView.new(
-        kind=AnalysisViewKind.OBSERVATION_BY_FEATURE,
-        manifest_id=manifest_id,
-        shape=list(logits.shape),
-        axes={"observations": "stimulus_presentations", "features": "imagenet_classifier_output"},
-        source_roles=["stimuli"],
-        transformation_lineage=[
-            f"vit:{model_name}",
-            f"softmax",
-            f"animate_inanimate@{animate_threshold}",
-        ],
-        artifact_path=str(out_dir),
-        summary={
+    input_fp = fingerprint_array(frames)
+    spec = ComputationSpec(
+        family="representations",
+        scope=scene_set_id,
+        name="vit_imagenet",
+        label=representation_spec_id,
+        parameters={
             "model_name": model_name,
-            "n_images": summary["n_images"],
-            "n_classes": summary["n_classes"],
-            "n_animate": n_animate,
-            "summary_path": str(summary_path),
+            "animate_threshold": int(animate_threshold),
         },
+        input_fingerprints=[input_fp],
     )
 
+    def _compute(out_dir):
+        logger.info(
+            "Running ViT (%s, device=%s, batch=%d) on %d frames -> %s",
+            model_name, device, batch_size, len(frames), out_dir,
+        )
+        logits, probabilities = run_vit_on_frames(
+            frames, model_name=model_name, batch_size=batch_size, device=device
+        )
+        top1 = derive_top1(probabilities)
+        animate_inanimate = derive_animate_inanimate(top1, animate_threshold)
+
+        save_npy(out_dir / "logits.npy", logits)
+        save_npy(out_dir / "probabilities.npy", probabilities)
+        save_npy(out_dir / "top1.npy", top1)
+        save_npy(out_dir / "animate_inanimate.npy", animate_inanimate)
+
+        n_animate = int(animate_inanimate.sum())
+        summary = {
+            "scene_set_id": scene_set_id,
+            "representation_spec_id": representation_spec_id,
+            "model_name": model_name,
+            "device": device,
+            "batch_size": int(batch_size),
+            "animate_threshold": int(animate_threshold),
+            "n_images": int(len(frames)),
+            "n_classes": int(logits.shape[1]),
+            "n_animate": n_animate,
+            "n_inanimate": int(len(frames) - n_animate),
+            "artifacts": {
+                "logits": str(out_dir / "logits.npy"),
+                "probabilities": str(out_dir / "probabilities.npy"),
+                "top1": str(out_dir / "top1.npy"),
+                "animate_inanimate": str(out_dir / "animate_inanimate.npy"),
+            },
+        }
+        view = AnalysisView.new(
+            kind=AnalysisViewKind.OBSERVATION_BY_FEATURE,
+            manifest_id=manifest_id,
+            shape=list(logits.shape),
+            axes={"observations": "stimulus_presentations", "features": "imagenet_classifier_output"},
+            source_roles=["stimuli"],
+            transformation_lineage=[
+                f"input:{input_fp[:12]}",
+                f"vit:{model_name}",
+                "softmax",
+                f"animate_inanimate@{animate_threshold}",
+            ],
+            artifact_path=str(out_dir),
+            summary={
+                "model_name": model_name,
+                "n_images": summary["n_images"],
+                "n_classes": summary["n_classes"],
+                "n_animate": n_animate,
+            },
+        )
+        return view, summary
+
+    view, summary, from_cache = cached_computation(spec, _compute)
+    if from_cache:
+        logger.info("ViT cache hit (%s) -> %s", spec.hash(), view.artifact_path)
+
+    # Lazy-load the arrays from disk so the caller can use them either way.
+    out_dir = Path(view.artifact_path)
     bundle = {
         "view": view,
-        "logits": logits,
-        "probabilities": probabilities,
-        "top1": top1,
-        "animate_inanimate": animate_inanimate,
+        "logits": np.load(out_dir / "logits.npy"),
+        "probabilities": np.load(out_dir / "probabilities.npy"),
+        "top1": np.load(out_dir / "top1.npy"),
+        "animate_inanimate": np.load(out_dir / "animate_inanimate.npy"),
         "out_dir": str(out_dir),
         "summary": summary,
+        "from_cache": from_cache,
     }
     return view, bundle

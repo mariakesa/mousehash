@@ -10,6 +10,11 @@ from mousehash.transformations.feature_extraction import (
     run_vit,
     run_vit_on_frames,
 )
+from mousehash.transformations.image_compression import (
+    DEFAULT_JPEG_QUALITIES,
+    extract_jpeg_size_view,
+    jpeg_size_bytes,
+)
 from mousehash.transformations.labeling import (
     ANIMATE_MAX_CLASS_IDX,
     derive_animate_inanimate,
@@ -19,9 +24,12 @@ from mousehash.transformations.labeling import (
 
 __all__ = [
     "ANIMATE_MAX_CLASS_IDX",
+    "DEFAULT_JPEG_QUALITIES",
     "derive_animate_inanimate",
     "derive_top1",
+    "extract_jpeg_size_view",
     "extract_vit_features_view",
+    "jpeg_size_bytes",
     "load_imagenet_labels",
     "run_vit",
     "run_vit_on_frames",

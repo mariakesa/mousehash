@@ -12,18 +12,18 @@ Do not import from `old_code/`. Do not point new code at the old paths.
 
 ## Where things are now
 
-**Built (Phase 1 spine + Phase 3 Allen vertical):**
+**Built (Phase 1 spine + Phase 3 Allen vertical + cache):**
 
 - `src/mousehash/core/` — pydantic v2 types: `RoleBundle` / `RoleEvidence`, `RoleManifest` / `DatasetRef`, `AnalysisView` / `AnalysisViewKind`, `ToolContract` / `check_manifest_satisfies`, `Artifact` / `ArtifactKind`, `ids.py` (`stable_hash`, NewType IDs), `errors.py`.
-- `src/mousehash/artifacts/` — `paths.py` (lazy env-resolved roots), `io.py` (JSON/NPY/HTML/CSV), `hashes.py` (`sha1_file`).
+- `src/mousehash/artifacts/` — `paths.py` (lazy env-resolved roots), `io.py` (JSON/NPY/HTML/CSV), `hashes.py` (`sha1_file`), **`cache.py` (`ComputationSpec` + `cached_computation` content-addressed cache)**.
 - `src/mousehash/targets/base.py` — `TargetAdapter` Protocol + query/metadata/resource dataclasses.
 - `src/mousehash/targets/allen/` — full Allen adapter: `client.py`, `stimuli.py`, `manifest.py`, `loaders.py`, `adapter.py`.
-- `src/mousehash/transformations/` — `feature_extraction.py` (ViT-ImageNet → AnalysisView), `labeling.py` (top1, animate/inanimate, ImageNet 1000 labels).
-- `src/mousehash/tools/factor_models/` — `pca.py` + `nmf.py` with declared `ToolContract`s, consuming `OBSERVATION_BY_FEATURE` views.
+- `src/mousehash/transformations/` — `feature_extraction.py` (ViT-ImageNet → AnalysisView, cached), `image_compression.py` (JPEG byte sizes at multiple qualities → AnalysisView, cached), `labeling.py` (top1, animate/inanimate, ImageNet 1000 labels).
+- `src/mousehash/tools/factor_models/` — `pca.py` + `nmf.py` with declared `ToolContract`s, consuming `OBSERVATION_BY_FEATURE` views. **(Not yet on the cache pattern — they use ad-hoc lineage_hash dirs; migrate when convenient.)**
 - `src/mousehash/tools/reports/structure_discovery.py` — combined PCA/NMF HTML reports + index page.
-- `src/mousehash/pipelines/allen_natural_scenes.py` — `run_allen_natural_scenes_v0()` end-to-end recipe.
+- `src/mousehash/pipelines/allen_natural_scenes.py` — `run_allen_natural_scenes_v0()` end-to-end recipe (ViT + JPEG + PCA + NMF + report).
 - `scripts/run_allen_v0.py` — CLI entry.
-- `tests/` — 127 tests, 9 files, runs in ~3 seconds.
+- `tests/` — 164 tests across 11 files, runs in ~3 seconds.
 
 **Not built yet (deliberately):**
 
@@ -53,6 +53,16 @@ Do not import from `old_code/`. Do not point new code at the old paths.
 # Reinstall after editing pyproject.toml.
 .venv/bin/pip install -e .
 ```
+
+## The cache pattern (use this for every new transformation)
+
+`artifacts/cache.py` is the canonical way to persist intermediate computations. Every transformation should be:
+
+1. **Build a `ComputationSpec`** with `family` (e.g. `"representations"`, `"compression"`), `scope` (the dataset/scene_set id), `name` (the tool name), `parameters` (everything that changes the output), and `input_fingerprints` (e.g. `fingerprint_array(frames)`). Use `label` for free-form tags — `label` does NOT participate in the cache hash.
+2. **Call `cached_computation(spec, compute)`** with a `compute(out_dir)` callback that writes data files into `out_dir` and returns `(view, summary)`. The cache writes `spec.json` + `view.json` + `summary.json` automatically. Same spec → same cache dir under `<artifact_root>/<family>/<scope>/<spec_hash>/`. Second call is a cache hit.
+3. **Include `input_fingerprint[:12]` as the first entry of `view.transformation_lineage`** so the resulting `view.lineage_hash` (and therefore `view.view_id`) reflects the input data, not just the structural shape. Without this, two views with different inputs but the same lineage strings end up with identical view_ids — see `extract_vit_features_view` and `extract_jpeg_size_view` for the pattern.
+
+Idempotence is now the default — re-running a pipeline with identical inputs is a no-op. PCA and NMF are **not** yet on this pattern; they use ad-hoc `decompositions_root()/<lineage_hash>/<spec_id>/` directories. Migrating them is a small follow-up.
 
 ## Architectural rules (enforce these when adding code)
 

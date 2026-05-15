@@ -31,6 +31,10 @@ from mousehash.transformations.feature_extraction import (
     DEFAULT_VIT_MODEL,
     extract_vit_features_view,
 )
+from mousehash.transformations.image_compression import (
+    DEFAULT_JPEG_QUALITIES,
+    extract_jpeg_size_view,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,7 @@ def run_allen_natural_scenes_v0(
     vit_batch_size: int = DEFAULT_BATCH_SIZE,
     vit_device: str = DEFAULT_DEVICE,
     animate_threshold: int = 397,
+    jpeg_qualities: tuple[int, ...] | list[int] = DEFAULT_JPEG_QUALITIES,
     report_output_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Run the full Allen natural-scenes structure-discovery pipeline.
@@ -54,8 +59,9 @@ def run_allen_natural_scenes_v0(
       1. Build / reuse the Allen natural-scenes RoleManifest.
       2. Materialize the image stack via the adapter.
       3. ViT-ImageNet feature extraction -> AnalysisView.
-      4. PCA on logits and NMF on probabilities.
-      5. Structure-discovery HTML report.
+      4. JPEG-compressibility feature extraction -> AnalysisView.
+      5. PCA on logits and NMF on probabilities.
+      6. Structure-discovery HTML report.
 
     Returns a dict with every artifact path the pipeline produced.
     """
@@ -80,6 +86,18 @@ def run_allen_natural_scenes_v0(
         batch_size=vit_batch_size,
         device=vit_device,
         animate_threshold=animate_threshold,
+    )
+
+    jpeg_view, jpeg_summary = extract_jpeg_size_view(
+        frames=images,
+        manifest_id=manifest.manifest_id,
+        scene_set_id=scene_set_id,
+        qualities=tuple(jpeg_qualities),
+        label=f"jpeg_v0_{scene_set_id}",
+    )
+    logger.info(
+        "JPEG view: %s (shape=%s, qualities=%s)",
+        jpeg_view.view_id, jpeg_view.shape, jpeg_summary["qualities"],
     )
 
     pca_summary = run_pca(
@@ -113,6 +131,8 @@ def run_allen_natural_scenes_v0(
         "manifest_id": manifest.manifest_id,
         "view_id": view.view_id,
         "vit_summary": vit_bundle["summary"],
+        "jpeg_view_id": jpeg_view.view_id,
+        "jpeg_summary": jpeg_summary,
         "pca_summary": pca_summary,
         "nmf_summary": nmf_summary,
         "report": report_summary,

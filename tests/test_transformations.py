@@ -157,3 +157,35 @@ class TestExtractVitFeaturesView:
         )
         assert any("vit:" in step for step in view.transformation_lineage)
         assert "softmax" in view.transformation_lineage
+
+    def test_cache_hit_on_second_call(self, data_root_tmp: Path, monkeypatch: pytest.MonkeyPatch):
+        """Second call with identical args should skip ViT and return from_cache=True."""
+        n = 5
+        n_calls = {"count": 0}
+
+        def counting_run(frames, model_name=None, batch_size=None, device=None):
+            n_calls["count"] += 1
+            from scipy.special import softmax
+            rng = np.random.default_rng(0)
+            logits = rng.normal(size=(len(frames), 1000)).astype(np.float32)
+            return logits, softmax(logits, axis=1).astype(np.float32)
+
+        monkeypatch.setattr("mousehash.transformations.feature_extraction.run_vit_on_frames", counting_run)
+        frames = np.zeros((n, 64, 64), dtype=np.uint8)
+
+        _, bundle1 = extract_vit_features_view(frames, ManifestId("mf_c"), scene_set_id="cache_a")
+        _, bundle2 = extract_vit_features_view(frames, ManifestId("mf_c"), scene_set_id="cache_a")
+
+        assert bundle1["from_cache"] is False
+        assert bundle2["from_cache"] is True
+        assert n_calls["count"] == 1  # ViT only ran once
+
+    def test_label_change_does_not_invalidate_cache(self, data_root_tmp: Path, monkeypatch: pytest.MonkeyPatch):
+        _patch_vit(monkeypatch, 4)
+        frames = np.zeros((4, 64, 64), dtype=np.uint8)
+        _, b1 = extract_vit_features_view(frames, ManifestId("mf_lab"), scene_set_id="lab",
+                                           representation_spec_id="run_a")
+        _, b2 = extract_vit_features_view(frames, ManifestId("mf_lab"), scene_set_id="lab",
+                                           representation_spec_id="run_b")
+        assert b1["from_cache"] is False
+        assert b2["from_cache"] is True
