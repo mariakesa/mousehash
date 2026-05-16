@@ -21,6 +21,7 @@ from mousehash.core.ids import DatasetId, TargetName
 from mousehash.core.manifests import DatasetRef, RoleManifest
 from mousehash.core.role_bundle import (
     MetadataRole,
+    NeuralDataRole,
     RoleBundle,
     RoleConfidence,
     RoleEvidence,
@@ -129,6 +130,19 @@ def build_natural_scenes_manifest(
                     source="allensdk",
                     path="get_stimulus_table('natural_scenes')",
                     notes="Per-experiment stimulus table with start/end/frame columns.",
+                ),
+            ],
+        ),
+        neural_data=NeuralDataRole(
+            status=RoleStatus.DERIVABLE,
+            confidence=RoleConfidence.HIGH,
+            evidence=[
+                RoleEvidence(
+                    status=RoleStatus.DERIVABLE,
+                    confidence=RoleConfidence.HIGH,
+                    source="allensdk",
+                    path="boc.get_ophys_experiment_events(session_id)",
+                    notes="Per-session L0 event arrays, shape (n_cells, n_timestamps).",
                 ),
             ],
         ),

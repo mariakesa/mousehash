@@ -25,6 +25,7 @@ from mousehash.transformations.image_compression import (
     DEFAULT_JPEG_QUALITIES,
     extract_jpeg_size_view,
 )
+from mousehash.transformations.neural_event_responses import extract_event_response_view
 
 
 class UnsupportedTargetError(MouseHashError):
@@ -102,6 +103,56 @@ def extract_vit_features(
         "artifact_path": view.artifact_path,
         "summary": vit_bundle["summary"],
         "from_cache": vit_bundle.get("from_cache", False),
+    }
+
+
+@mcp_safe
+def extract_event_responses(
+    manifest_id: str,
+    threshold: float = 0.0,
+    target_trials_per_image: int = 50,
+    n_images: int = 118,
+    allen_manifest_path: str = "",
+) -> dict[str, Any]:
+    """Aggregate Allen ophys event responses into a (n_neurons, 118) probability matrix.
+
+    For every Allen ophys session showing `natural_scenes`, compute the
+    per-(neuron, image) probability of an L0 event in the stimulus window
+    (binary mean across `target_trials_per_image` trials), then concatenate
+    across sessions on the neuron axis. Strict filter: skips sessions whose
+    stim_table doesn't yield at least `target_trials_per_image` trials for
+    every one of the `n_images` images.
+
+    Idempotent: same set of kept sessions + same parameters -> cache hit.
+
+    Args:
+        manifest_id: role manifest id returned by `allen_build_manifest`.
+        threshold: per-trial event amplitude threshold; default 0.0 mirrors
+            the original ProjectionSort `(max > 0)` rule.
+        target_trials_per_image: required minimum trials per image; sessions
+            falling short are skipped.
+        n_images: number of distinct images expected (118 for natural_scenes).
+        allen_manifest_path: AllenSDK manifest JSON; empty -> env-resolved.
+
+    Returns:
+        {view_id, artifact_path, summary, from_cache}. `summary` includes
+        `n_total_neurons`, `n_sessions_kept`, `n_sessions_skipped`,
+        `n_donors`, `n_containers`, and the artifact paths.
+    """
+    manifest = _load_manifest(manifest_id)
+    view, summary = extract_event_response_view(
+        manifest=manifest,
+        stimulus="natural_scenes",
+        n_images=int(n_images),
+        target_trials_per_image=int(target_trials_per_image),
+        threshold=float(threshold),
+        allen_manifest_path=Path(allen_manifest_path).expanduser() if allen_manifest_path else None,
+    )
+    return {
+        "view_id": view.view_id,
+        "artifact_path": view.artifact_path,
+        "summary": summary,
+        "from_cache": summary.get("from_cache", False),
     }
 
 

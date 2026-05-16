@@ -23,6 +23,7 @@ EXPECTED_TOOL_NAMES = {
     "inspect_view",
     "extract_vit_features",
     "extract_jpeg_sizes",
+    "extract_event_responses",
     "run_pca",
     "run_nmf",
     "compare_jpeg_by_animate_inanimate",

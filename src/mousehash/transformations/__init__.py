@@ -21,12 +21,14 @@ from mousehash.transformations.labeling import (
     derive_top1,
     load_imagenet_labels,
 )
+from mousehash.transformations.neural_event_responses import extract_event_response_view
 
 __all__ = [
     "ANIMATE_MAX_CLASS_IDX",
     "DEFAULT_JPEG_QUALITIES",
     "derive_animate_inanimate",
     "derive_top1",
+    "extract_event_response_view",
     "extract_jpeg_size_view",
     "extract_vit_features_view",
     "jpeg_size_bytes",

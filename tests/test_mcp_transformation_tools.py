@@ -8,7 +8,11 @@ import numpy as np
 import pytest
 
 from mousehash.mcp.target_tools import allen_build_manifest
-from mousehash.mcp.transformation_tools import extract_jpeg_sizes, extract_vit_features
+from mousehash.mcp.transformation_tools import (
+    extract_event_responses,
+    extract_jpeg_sizes,
+    extract_vit_features,
+)
 
 
 def _bootstrap_allen(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, data_root_tmp: Path,
@@ -99,4 +103,49 @@ class TestExtractJpegSizes:
 
     def test_unknown_manifest_returns_structured_error(self, data_root_tmp: Path):
         result = extract_jpeg_sizes(manifest_id="mf_doesnotexist")
+        assert result["type"] == "ManifestNotFoundError"
+
+
+class TestExtractEventResponses:
+    def _stub_core(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Replace extract_event_response_view with a fake (view, summary) pair."""
+        from mousehash.core.analysis_view import AnalysisView, AnalysisViewKind
+
+        fake_dir = tmp_path / "fake_events"
+        fake_dir.mkdir(parents=True, exist_ok=True)
+        fake_view = AnalysisView.new(
+            kind=AnalysisViewKind.OBSERVATION_BY_FEATURE,
+            manifest_id="mf_fake",
+            shape=[10, 118],
+            axes={"observations": "neurons_across_sessions", "features": "natural_scene_images"},
+            source_roles=["neural_data", "stimuli"],
+            transformation_lineage=["input:abc", "event_probability:max>0.0"],
+            artifact_path=str(fake_dir),
+            summary={"n_total_neurons": 10, "n_images": 118},
+        )
+        fake_summary = {
+            "n_total_neurons": 10, "n_sessions_kept": 2, "n_sessions_skipped": 0,
+            "n_images": 118, "n_donors": 2, "n_containers": 2,
+            "from_cache": False,
+            "artifacts": {"event_probabilities": str(fake_dir / "event_probabilities.npy")},
+        }
+        monkeypatch.setattr(
+            "mousehash.mcp.transformation_tools.extract_event_response_view",
+            lambda manifest, **kw: (fake_view, fake_summary),
+        )
+
+    def test_returns_view_id_and_summary(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, data_root_tmp: Path,
+    ):
+        manifest_id = _bootstrap_allen(monkeypatch, tmp_path, data_root_tmp)
+        self._stub_core(monkeypatch, tmp_path)
+        result = extract_event_responses(manifest_id=manifest_id)
+        assert result["view_id"].startswith("view_")
+        assert Path(result["artifact_path"]).exists()
+        assert result["summary"]["n_total_neurons"] == 10
+        assert result["summary"]["n_sessions_kept"] == 2
+        assert result["from_cache"] is False
+
+    def test_unknown_manifest_returns_structured_error(self, data_root_tmp: Path):
+        result = extract_event_responses(manifest_id="mf_doesnotexist")
         assert result["type"] == "ManifestNotFoundError"
