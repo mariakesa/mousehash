@@ -16,6 +16,7 @@ from mousehash.core.errors import MouseHashError
 from mousehash.core.manifests import RoleManifest
 from mousehash.mcp.errors import mcp_safe
 from mousehash.tools.comparison.group_comparison import GROUP_COMPARISON_CONTRACT
+from mousehash.tools.decoders.logistic_decoder import LOGISTIC_DECODER_CONTRACT
 from mousehash.tools.factor_models.nmf import NMF_CONTRACT
 from mousehash.tools.factor_models.pca import PCA_CONTRACT
 from mousehash.tools.scheduling.schedule_comparison import STIMULUS_SCHEDULE_CONTRACT
@@ -30,6 +31,7 @@ _CONTRACTS: list[ToolContract] = [
     NMF_CONTRACT,
     GROUP_COMPARISON_CONTRACT,
     STIMULUS_SCHEDULE_CONTRACT,
+    LOGISTIC_DECODER_CONTRACT,
 ]
 _CONTRACTS_BY_NAME: dict[str, ToolContract] = {c.name: c for c in _CONTRACTS}
 

@@ -29,6 +29,9 @@ EXPECTED_TOOL_NAMES = {
     "compare_jpeg_by_animate_inanimate",
     "generate_structure_report",
     "run_allen_natural_scenes_v0",
+    # Decoders + BlahML driver
+    "decode_animate_inanimate",
+    "decoder_next_question",
 }
 
 EXPECTED_RESOURCE_URIS = {
@@ -44,6 +47,7 @@ EXPECTED_RESOURCE_TEMPLATE_URIS = {
 EXPECTED_PROMPT_NAMES = {
     "explain_dataset_readiness",
     "design_analysis_plan",
+    "design_decoder_fit",
 }
 
 

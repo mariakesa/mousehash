@@ -1,0 +1,118 @@
+id: allen_logistic_decoder
+version: 0.1.0
+display_name: Decode animate vs inanimate from an event-probability view
+workflow_family: decoding
+priority: MVP
+
+description:
+  short: Logistic regression decoder over a (neurons, images) view, predicting animate/inanimate per image.
+  long: >
+    Transposes the event-probability view to (images, neurons), pairs each image with
+    its ViT-derived animate/inanimate label, and fits sklearn LogisticRegression with
+    cross-validation. Reports CV accuracy, balanced accuracy, optional permutation
+    null, and always refits on full data so coefficients are persisted for
+    interpretation.
+
+tool_binding:
+  python_function: mousehash.tools.decoders.logistic_decoder.run_logistic_decoder
+  input_model: LogisticDecoderSpec
+  output_artifact: LogisticDecoderArtifact
+
+inputs:
+  - name: neural_view_id
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [observation_by_feature]
+    question:
+      ask: Which neural view should the decoder use?
+      explain: Output of extract_event_responses (shape n_neurons x n_images) or any compatible OBSERVATION_BY_FEATURE view.
+  - name: labels_view_id
+    type: artifact_ref
+    required: true
+    accepted_artifact_types: [observation_by_feature]
+    question:
+      ask: Which view carries the per-image animate/inanimate labels?
+      explain: Use the ViT features view written by extract_vit_features; the decoder loads animate_inanimate.npy from its artifact dir.
+
+parameters:
+  - name: split_strategy
+    type: enum
+    required: true
+    choices: [loo, stratified_kfold, holdout]
+    question:
+      ask: Which cross-validation scheme over the images?
+      explain: "loo = leave-one-image-out (118 folds), stratified_kfold = balanced k folds, holdout = single train/test split."
+  - name: k_folds
+    type: integer
+    required: false
+    default: 5
+    range: {min: 2, max: 20}
+    question:
+      ask: How many folds for stratified k-fold?
+      explain: Only used when split_strategy=stratified_kfold; 5 is standard.
+  - name: holdout_fraction
+    type: float
+    required: false
+    default: 0.25
+    range: {min: 0.1, max: 0.5}
+    question:
+      ask: What fraction of images for the held-out test set?
+      explain: Only used when split_strategy=holdout.
+  - name: penalty
+    type: enum
+    required: false
+    default: l2
+    choices: [l1, l2]
+    question:
+      ask: Regularization?
+      explain: "l2 is safe for n<<p; l1 yields sparse weights but is less stable in this regime."
+  - name: class_weight
+    type: enum
+    required: false
+    default: balanced
+    choices: [none, balanced]
+    question:
+      ask: Class weighting?
+      explain: "'balanced' corrects for animate/inanimate imbalance in the ViT label vector."
+  - name: search_hyperparams
+    type: boolean
+    required: false
+    default: false
+    question:
+      ask: Search for the best regularization strength C via inner CV?
+      explain: Adds nested CV with GridSearchCV. Slower but produces a tuned C per outer fold.
+  - name: C_grid
+    type: string
+    required: false
+    default: "0.01,0.1,1,10,100"
+    question:
+      ask: Comma-separated C grid for inner CV.
+      explain: Only used when search_hyperparams=true.
+  - name: random_state
+    type: integer
+    required: false
+    default: 0
+    question:
+      ask: Random seed for split + permutation.
+      explain: Pin for reproducibility.
+  - name: n_permutations
+    type: integer
+    required: false
+    default: 0
+    range: {min: 0, max: 2000}
+    question:
+      ask: Number of label permutations for the null distribution?
+      explain: 0 skips. 200-1000 gives a usable p-value; expensive when feature count is large.
+
+validation:
+  checks:
+    - neural_view_shape_matches_labels
+    - per_class_sample_count_at_least_5
+
+assumptions:
+  - The neural view's column index is aligned with the labels vector index (one entry per image).
+  - Labels are binary (0/1).
+
+failure_modes:
+  - With n_images=118 and n_neurons in the tens of thousands, training accuracy is uninformative; trust cross-validated scores.
+  - Permutation-null is expensive with large feature counts; budget accordingly.

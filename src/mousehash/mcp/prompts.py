@@ -25,6 +25,32 @@ def explain_dataset_readiness(manifest_id: str) -> str:
     )
 
 
+def design_decoder_fit(neural_view_id: str = "", labels_view_id: str = "") -> str:
+    """Prompt the agent to walk the BlahML decoder question loop with the user."""
+    seed = {}
+    if neural_view_id:
+        seed["neural_view_id"] = neural_view_id
+    if labels_view_id:
+        seed["labels_view_id"] = labels_view_id
+    seed_json = "{}" if not seed else "{" + ", ".join(f'\"{k}\": \"{v}\"' for k, v in seed.items()) + "}"
+    return (
+        f"Drive the logistic-decoder fit configuration with the user using BlahML.\n"
+        f"\n"
+        f"  1. Call `decoder_next_question(answers_json='{seed_json}')` to get the first pending question.\n"
+        f"  2. For each returned `question`:\n"
+        f"       - Read `question.ask` and `question.explain` aloud to the user.\n"
+        f"       - If `question.choices` exists, present them; if `question.default` exists, mention it as a safe fallback.\n"
+        f"       - Wait for the user's answer. Coerce it into the right type from `question.type`.\n"
+        f"       - Add the answer under `question.name` in your running answers dict; JSON-encode and pass back as the new `answers_json`.\n"
+        f"  3. Loop until `decoder_next_question` returns `resolved: true`. Then call:\n"
+        f"       `decode_animate_inanimate(neural_view_id=..., labels_view_id=..., split_strategy=..., k_folds=..., ...)`\n"
+        f"     passing every answered key. Omit keys the user did not answer — the tool will use its default.\n"
+        f"  4. Report `summary.cv_balanced_accuracy` vs `summary.chance_accuracy`, plus `summary.p_value` if a permutation null was requested. Mention the artifact dir so the user can inspect coefficients.\n"
+        f"\n"
+        f"Do not invent parameter names. Only use the keys returned by `decoder_next_question`."
+    )
+
+
 def design_analysis_plan(scientific_goal: str) -> str:
     """Prompt the agent to map a research question onto MouseHash tools."""
     return (

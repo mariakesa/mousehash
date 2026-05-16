@@ -21,8 +21,13 @@ from mousehash.mcp.manifest_tools import (
     get_manifest,
     list_runnable_tools,
 )
+from mousehash.mcp.decoder_tools import decode_animate_inanimate, decoder_next_question
 from mousehash.mcp.pipeline_tools import run_allen_natural_scenes_v0
-from mousehash.mcp.prompts import design_analysis_plan, explain_dataset_readiness
+from mousehash.mcp.prompts import (
+    design_analysis_plan,
+    design_decoder_fit,
+    explain_dataset_readiness,
+)
 from mousehash.mcp.report_tools import generate_structure_report
 from mousehash.mcp.resources import (
     allen_datasets_resource,
@@ -63,6 +68,9 @@ mcp.tool()(run_pca)
 mcp.tool()(run_nmf)
 mcp.tool()(compare_jpeg_by_animate_inanimate)
 mcp.tool()(analyze_stimulus_schedule)
+# Decoders
+mcp.tool()(decode_animate_inanimate)
+mcp.tool()(decoder_next_question)
 # Reports
 mcp.tool()(generate_structure_report)
 # All-in-one pipeline
@@ -81,6 +89,7 @@ mcp.resource("mousehash://tools/{tool_name}/contract")(tool_contract_resource)
 
 mcp.prompt()(explain_dataset_readiness)
 mcp.prompt()(design_analysis_plan)
+mcp.prompt()(design_decoder_fit)
 
 
 __all__ = ["mcp"]

@@ -49,6 +49,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 mousehash = ["py.typed"]
 "mousehash.transformations" = ["imagenet1000_clsidx_to_labels.txt"]
+"mousehash.blahml.manifests" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
