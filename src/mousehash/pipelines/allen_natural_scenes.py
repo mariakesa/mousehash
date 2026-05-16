@@ -100,19 +100,19 @@ def run_allen_natural_scenes_v0(
         jpeg_view.view_id, jpeg_view.shape, jpeg_summary["qualities"],
     )
 
-    pca_summary = run_pca(
+    pca_view, pca_summary = run_pca(
         view=view,
         n_components=pca_n_components,
         normalize_input=True,
         input_array_name="logits",
-        decomposition_spec_id=f"pca_logits_{pca_n_components}",
+        label=f"pca_logits_{pca_n_components}",
     )
-    nmf_summary = run_nmf(
+    nmf_view, nmf_summary = run_nmf(
         view=view,
         n_components=nmf_n_components,
         temperature=nmf_temperature,
         input_array_name="probabilities",
-        decomposition_spec_id=f"nmf_probs_{nmf_n_components}_T{nmf_temperature}",
+        label=f"nmf_probs_{nmf_n_components}_T{nmf_temperature}",
     )
 
     report_dir = report_output_dir or (reports_root() / manifest.manifest_id)
@@ -133,7 +133,9 @@ def run_allen_natural_scenes_v0(
         "vit_summary": vit_bundle["summary"],
         "jpeg_view_id": jpeg_view.view_id,
         "jpeg_summary": jpeg_summary,
+        "pca_view_id": pca_view.view_id,
         "pca_summary": pca_summary,
+        "nmf_view_id": nmf_view.view_id,
         "nmf_summary": nmf_summary,
         "report": report_summary,
     }

@@ -1,3 +1,8 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "mousehash": {
+      "command": "/home/maria/mousehash/.venv/bin/python",
+      "args": ["-m", "mousehash.mcp"]
+    }
+  }
 }

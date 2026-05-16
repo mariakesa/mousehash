@@ -61,7 +61,9 @@ class TestRunPCA:
         probs = probs.astype(np.float32)
         view = _make_feature_view(tmp_path, logits, probs)
 
-        summary = run_pca(view=view, n_components=5)
+        out_view, summary = run_pca(view=view, n_components=5)
+        assert out_view.kind == AnalysisViewKind.OBSERVATION_BY_FEATURE
+        assert out_view.axes["features"] == "pca_components"
         assert summary["method"] == "pca"
         assert summary["n_components"] == 5
         assert summary["n_images"] == n
@@ -69,16 +71,20 @@ class TestRunPCA:
         assert Path(summary["artifacts"]["scores"]).exists()
         assert Path(summary["artifacts"]["components"]).exists()
         assert Path(summary["artifacts"]["component_stats"]).exists()
-        assert Path(summary["summary_path"]).exists()
+        # cache writes view.json + summary.json + spec.json automatically
+        assert (Path(out_view.artifact_path) / "view.json").exists()
+        assert (Path(out_view.artifact_path) / "spec.json").exists()
+        assert summary["view_id"] == out_view.view_id
 
     def test_scores_shape(self, data_root_tmp: Path, tmp_path: Path):
         rng = np.random.default_rng(1)
         n, d, k = 40, 30, 5
         logits = rng.normal(size=(n, d)).astype(np.float32)
         view = _make_feature_view(tmp_path, logits, logits)
-        summary = run_pca(view=view, n_components=k)
+        out_view, summary = run_pca(view=view, n_components=k)
         scores = np.load(summary["artifacts"]["scores"])
         assert scores.shape == (n, k)
+        assert out_view.shape == [n, k]
 
     def test_rejects_wrong_view_kind(self, data_root_tmp: Path, tmp_path: Path):
         view = _make_wrong_kind_view(tmp_path)
@@ -103,8 +109,27 @@ class TestRunPCA:
         probs = probs / probs.sum(axis=1, keepdims=True)
         view = _make_feature_view(tmp_path, logits, probs.astype(np.float32))
         # PCA on probabilities instead of logits
-        summary = run_pca(view=view, n_components=3, input_array_name="probabilities")
+        _, summary = run_pca(view=view, n_components=3, input_array_name="probabilities")
         assert summary["input_array_name"] == "probabilities"
+
+    def test_idempotent_cache_hit(self, data_root_tmp: Path, tmp_path: Path):
+        rng = np.random.default_rng(7)
+        logits = rng.normal(size=(20, 12)).astype(np.float32)
+        view = _make_feature_view(tmp_path, logits, logits)
+        v1, s1 = run_pca(view=view, n_components=4)
+        v2, s2 = run_pca(view=view, n_components=4)
+        assert s1["from_cache"] is False
+        assert s2["from_cache"] is True
+        assert v1.view_id == v2.view_id
+
+    def test_label_does_not_invalidate_cache(self, data_root_tmp: Path, tmp_path: Path):
+        rng = np.random.default_rng(8)
+        logits = rng.normal(size=(20, 12)).astype(np.float32)
+        view = _make_feature_view(tmp_path, logits, logits)
+        _, s1 = run_pca(view=view, n_components=4, label="run_alpha")
+        _, s2 = run_pca(view=view, n_components=4, label="run_beta")
+        assert s1["from_cache"] is False
+        assert s2["from_cache"] is True
 
     def test_pca_contract_name(self):
         assert PCA_CONTRACT.name == "run_pca"
@@ -156,24 +181,29 @@ class TestRunNMF:
     def test_basic_run(self, data_root_tmp: Path, tmp_path: Path):
         probs = self._probs()
         view = _make_feature_view(tmp_path, np.log(probs + 1e-12), probs)
-        summary = run_nmf(view=view, n_components=5, temperature=1.0)
+        out_view, summary = run_nmf(view=view, n_components=5, temperature=1.0)
+        assert out_view.kind == AnalysisViewKind.OBSERVATION_BY_FEATURE
+        assert out_view.axes["features"] == "nmf_components"
         assert summary["method"] == "nmf"
         assert summary["n_components"] == 5
         assert summary["reconstruction_err"] >= 0.0
         assert summary["n_iter"] >= 1
         assert Path(summary["artifacts"]["scores"]).exists()
+        assert (Path(out_view.artifact_path) / "view.json").exists()
+        assert summary["view_id"] == out_view.view_id
 
     def test_scores_shape(self, data_root_tmp: Path, tmp_path: Path):
         probs = self._probs(n=24, d=15)
         view = _make_feature_view(tmp_path, np.log(probs + 1e-12), probs)
-        summary = run_nmf(view=view, n_components=4)
+        out_view, summary = run_nmf(view=view, n_components=4)
         scores = np.load(summary["artifacts"]["scores"])
         assert scores.shape == (24, 4)
+        assert out_view.shape == [24, 4]
 
     def test_scores_nonnegative(self, data_root_tmp: Path, tmp_path: Path):
         probs = self._probs()
         view = _make_feature_view(tmp_path, np.log(probs + 1e-12), probs)
-        summary = run_nmf(view=view, n_components=3)
+        _, summary = run_nmf(view=view, n_components=3)
         scores = np.load(summary["artifacts"]["scores"])
         assert (scores >= 0).all()
 
@@ -185,8 +215,25 @@ class TestRunNMF:
     def test_temperature_propagated_to_summary(self, data_root_tmp: Path, tmp_path: Path):
         probs = self._probs()
         view = _make_feature_view(tmp_path, np.log(probs + 1e-12), probs)
-        summary = run_nmf(view=view, n_components=3, temperature=2.5)
+        _, summary = run_nmf(view=view, n_components=3, temperature=2.5)
         assert summary["temperature"] == 2.5
+
+    def test_idempotent_cache_hit(self, data_root_tmp: Path, tmp_path: Path):
+        probs = self._probs(n=20, d=15)
+        view = _make_feature_view(tmp_path, np.log(probs + 1e-12), probs)
+        v1, s1 = run_nmf(view=view, n_components=4)
+        v2, s2 = run_nmf(view=view, n_components=4)
+        assert s1["from_cache"] is False
+        assert s2["from_cache"] is True
+        assert v1.view_id == v2.view_id
+
+    def test_temperature_change_invalidates_cache(self, data_root_tmp: Path, tmp_path: Path):
+        probs = self._probs(n=20, d=15)
+        view = _make_feature_view(tmp_path, np.log(probs + 1e-12), probs)
+        _, s1 = run_nmf(view=view, n_components=3, temperature=1.0)
+        _, s2 = run_nmf(view=view, n_components=3, temperature=2.0)
+        assert s1["from_cache"] is False
+        assert s2["from_cache"] is False
 
     def test_nmf_contract_name(self):
         assert NMF_CONTRACT.name == "run_nmf"

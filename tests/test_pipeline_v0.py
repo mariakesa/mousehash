@@ -56,6 +56,8 @@ class TestPipelineV0:
         assert "manifest_id" in result and result["manifest_id"].startswith("mf_")
         assert "view_id" in result and result["view_id"].startswith("view_")
         assert "jpeg_view_id" in result and result["jpeg_view_id"].startswith("view_")
+        assert "pca_view_id" in result and result["pca_view_id"].startswith("view_")
+        assert "nmf_view_id" in result and result["nmf_view_id"].startswith("view_")
         for key in ["pca_summary", "nmf_summary", "report", "vit_summary", "jpeg_summary"]:
             assert key in result
         # JPEG produced a (n_images, n_qualities) feature matrix

@@ -19,18 +19,29 @@ Do not import from `old_code/`. Do not point new code at the old paths.
 - `src/mousehash/targets/base.py` — `TargetAdapter` Protocol + query/metadata/resource dataclasses.
 - `src/mousehash/targets/allen/` — full Allen adapter: `client.py`, `stimuli.py`, `manifest.py`, `loaders.py`, `adapter.py`.
 - `src/mousehash/transformations/` — `feature_extraction.py` (ViT-ImageNet → AnalysisView, cached), `image_compression.py` (JPEG byte sizes at multiple qualities → AnalysisView, cached), `labeling.py` (top1, animate/inanimate, ImageNet 1000 labels).
-- `src/mousehash/tools/factor_models/` — `pca.py` + `nmf.py` with declared `ToolContract`s, consuming `OBSERVATION_BY_FEATURE` views. **(Not yet on the cache pattern — they use ad-hoc lineage_hash dirs; migrate when convenient.)**
+- `src/mousehash/tools/factor_models/` — `pca.py` + `nmf.py` with declared `ToolContract`s. On the `cached_computation` pattern: return `(AnalysisView, summary)`, idempotent on identical inputs.
+- `src/mousehash/tools/comparison/` — two-group statistical comparison of any `OBSERVATION_BY_FEATURE` view against a binary label vector. Welch's t + Mann-Whitney U + Cohen's d + Bonferroni-corrected min-p, plus an interactive plotly grouped boxplot and a plain-English summary string. `GROUP_COMPARISON_CONTRACT` is in the readiness registry. Cached via `cached_computation`.
 - `src/mousehash/tools/reports/structure_discovery.py` — combined PCA/NMF HTML reports + index page.
 - `src/mousehash/pipelines/allen_natural_scenes.py` — `run_allen_natural_scenes_v0()` end-to-end recipe (ViT + JPEG + PCA + NMF + report).
+- `src/mousehash/mcp/` — FastMCP server with **14 tools** registered:
+  - Targets + manifests + readiness: `allen_list_datasets`, `allen_build_manifest`, `get_manifest`, `list_runnable_tools`, `explain_tool_readiness`.
+  - Views: `list_views`, `inspect_view`.
+  - Transformations: `extract_vit_features`, `extract_jpeg_sizes`.
+  - Analysis: `run_pca`, `run_nmf`, `compare_jpeg_by_animate_inanimate`.
+  - Reports: `generate_structure_report`.
+  - All-in-one pipeline: `run_allen_natural_scenes_v0`.
+
+  Plus 4 `@mcp.resource` entries (`mousehash://targets`, `mousehash://targets/allen/datasets`, `mousehash://manifests/{id}`, `mousehash://tools/{name}/contract`) and 2 `@mcp.prompt` templates (`explain_dataset_readiness`, `design_analysis_plan`). Launch via `python -m mousehash.mcp` (wired in `.mcp.json`). Each tool wrapper is `@mcp_safe`-decorated so `MouseHashError` subclasses surface as structured `{error, type, details}` JSON.
 - `scripts/run_allen_v0.py` — CLI entry.
-- `tests/` — 164 tests across 11 files, runs in ~3 seconds.
+- `tests/` — 252 tests across 22 files, runs in ~6 seconds.
 
 **Not built yet (deliberately):**
 
-- `src/mousehash/mcp/` — FastMCP server. The whole point of the rebuild, but the tools-and-types layer had to exist first. `.mcp.json` is intentionally empty until this lands.
+- **HTTP transport for MCP.** Stdio-only for now (Claude Code's default).
 - `src/mousehash/targets/dandi/` — Phase 2 in the architecture doc. The DANDI scanner is the flagship MVP because it stress-tests the role-bundle abstraction against heterogeneous NWB files.
 - `src/mousehash/targets/ibl/` — Phase 6.
-- `src/mousehash/schema/` — DataJoint or alternative persistence. Deferred until the MCP loop is real.
+- `src/mousehash/schema/` — DataJoint or alternative persistence. Deferred until the MCP loop sees real load.
+- **Multi-target transformation dispatch.** `mcp/transformation_tools.py::_materialize_image_stack` is currently Allen-only. When DANDI / IBL land, dispatch on `manifest.dataset.target` to the right adapter.
 
 ## Environment
 
@@ -62,7 +73,26 @@ Do not import from `old_code/`. Do not point new code at the old paths.
 2. **Call `cached_computation(spec, compute)`** with a `compute(out_dir)` callback that writes data files into `out_dir` and returns `(view, summary)`. The cache writes `spec.json` + `view.json` + `summary.json` automatically. Same spec → same cache dir under `<artifact_root>/<family>/<scope>/<spec_hash>/`. Second call is a cache hit.
 3. **Include `input_fingerprint[:12]` as the first entry of `view.transformation_lineage`** so the resulting `view.lineage_hash` (and therefore `view.view_id`) reflects the input data, not just the structural shape. Without this, two views with different inputs but the same lineage strings end up with identical view_ids — see `extract_vit_features_view` and `extract_jpeg_size_view` for the pattern.
 
-Idempotence is now the default — re-running a pipeline with identical inputs is a no-op. PCA and NMF are **not** yet on this pattern; they use ad-hoc `decompositions_root()/<lineage_hash>/<spec_id>/` directories. Migrating them is a small follow-up.
+Idempotence is the default — re-running a pipeline with identical inputs is a no-op. **PCA and NMF are now on this pattern too**: they take a source `AnalysisView`, return `(output_view, summary)`, and cache under `<artifact_root>/decompositions/<source_view.lineage_hash>/<spec_hash>/`.
+
+## The MCP layer (how to add a tool)
+
+The MCP server lives in `src/mousehash/mcp/`. It's a thin **registration + adapter** layer over the Python library — it never adds new analysis logic. Launch: `python -m mousehash.mcp` (the entry point is `mcp/__main__.py`, the registration is in `mcp/server.py`).
+
+To add a new MCP tool:
+
+1. Pick the right `mcp/<domain>_tools.py` file (target / manifest / view / transformation / analysis / report / pipeline) or add a new one.
+2. Write a wrapper. **Args**: `str`, `int`, `float`, `bool`, `list[...]` only — no `Path`, no `Optional[T]` outside string sentinels, no `np.ndarray`, no `tuple`, no pydantic models at the boundary. For optional paths, use `Path(arg).expanduser() if arg else None`.
+3. **Return** a plain dict whose values are JSON-serializable. Lift `manifest_id` / `view_id` / `artifact_path` to top-level keys when present. Pydantic models go through `.model_dump(mode="json")`.
+4. Decorate with `@mcp_safe` (from `mcp/errors.py`) outermost. It catches `MouseHashError` subclasses and returns `{"error", "type", "details"}` JSON; other exceptions bubble.
+5. Register in `mcp/server.py` with `mcp.tool()(your_fn)`. Tool name = function name; the server's `mousehash` namespace separates them in Claude's view.
+6. Add a smoke test in `tests/test_mcp_<domain>_tools.py` that monkeypatches the core call and checks the wrapper's signature shape + JSON-serializable return.
+
+Resources go in `mcp/resources.py` as `mcp.resource("mousehash://...")(fn)` callbacks (return JSON strings). Prompts go in `mcp/prompts.py` as `mcp.prompt()(fn)` string-returning functions. Both are **read-only** — never mutate state in a resource or prompt handler.
+
+**View-by-id lookup**: `mcp/views.py::find_view_by_id` walks `artifact_root().rglob("view.json")` and matches `view.view_id`. O(n) over the cache; fine for v0 (low view cardinality). Upgrade to an index file written inside `cached_computation` if cardinality exceeds ~1000.
+
+**Adding a new tool to the readiness registry**: in `mcp/manifest_tools.py`, append the new `ToolContract` to `_CONTRACTS`. `list_runnable_tools` and `explain_tool_readiness` will pick it up automatically.
 
 ## Architectural rules (enforce these when adding code)
 
