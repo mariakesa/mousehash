@@ -30,6 +30,7 @@ from mousehash.mcp.resources import (
     targets_resource,
     tool_contract_resource,
 )
+from mousehash.mcp.schedule_tools import analyze_stimulus_schedule, extract_stimulus_schedule
 from mousehash.mcp.target_tools import allen_build_manifest, allen_list_datasets
 from mousehash.mcp.transformation_tools import extract_jpeg_sizes, extract_vit_features
 from mousehash.mcp.view_tools import inspect_view, list_views
@@ -51,10 +52,12 @@ mcp.tool()(inspect_view)
 # Transformations
 mcp.tool()(extract_vit_features)
 mcp.tool()(extract_jpeg_sizes)
+mcp.tool()(extract_stimulus_schedule)
 # Analysis
 mcp.tool()(run_pca)
 mcp.tool()(run_nmf)
 mcp.tool()(compare_jpeg_by_animate_inanimate)
+mcp.tool()(analyze_stimulus_schedule)
 # Reports
 mcp.tool()(generate_structure_report)
 # All-in-one pipeline

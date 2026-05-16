@@ -35,6 +35,7 @@ class AnalysisViewKind(str, Enum):
     FUNCTIONAL_GRAPH = "functional_graph"
     METRIC_TABLE = "metric_table"
     REPORT_BUNDLE = "report_bundle"
+    PRESENTATION_TABLE = "presentation_table"
 
 
 class AnalysisView(BaseModel):

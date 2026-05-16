@@ -21,19 +21,21 @@ Do not import from `old_code/`. Do not point new code at the old paths.
 - `src/mousehash/transformations/` — `feature_extraction.py` (ViT-ImageNet → AnalysisView, cached), `image_compression.py` (JPEG byte sizes at multiple qualities → AnalysisView, cached), `labeling.py` (top1, animate/inanimate, ImageNet 1000 labels).
 - `src/mousehash/tools/factor_models/` — `pca.py` + `nmf.py` with declared `ToolContract`s. On the `cached_computation` pattern: return `(AnalysisView, summary)`, idempotent on identical inputs.
 - `src/mousehash/tools/comparison/` — two-group statistical comparison of any `OBSERVATION_BY_FEATURE` view against a binary label vector. Welch's t + Mann-Whitney U + Cohen's d + Bonferroni-corrected min-p, plus an interactive plotly grouped boxplot and a plain-English summary string. `GROUP_COMPARISON_CONTRACT` is in the readiness registry. Cached via `cached_computation`.
+- `src/mousehash/tools/scheduling/` — `schedule_comparison.py`: per-session block-permutation diagnostics + pairwise cross-session agreement + donor breakdown, consumes a `PRESENTATION_TABLE` view from `extract_stimulus_schedule_view`. Plotly heatmap output, plain-English summary that directly answers "same order each trial? / same schedule for all animals?". `STIMULUS_SCHEDULE_CONTRACT` is in the readiness registry. Cached via `cached_computation`.
+- `src/mousehash/transformations/stimulus_schedule.py` — `extract_stimulus_schedule_view`: pulls `boc.get_ophys_experiment_data(sid).get_stimulus_table(stim)` for every Allen session with the stimulus, persists per-session `frame`/`start`/`end` arrays + donor/container metadata as a `PRESENTATION_TABLE` AnalysisView. Materializes the manifest's `time_organization` role.
 - `src/mousehash/tools/reports/structure_discovery.py` — combined PCA/NMF HTML reports + index page.
 - `src/mousehash/pipelines/allen_natural_scenes.py` — `run_allen_natural_scenes_v0()` end-to-end recipe (ViT + JPEG + PCA + NMF + report).
-- `src/mousehash/mcp/` — FastMCP server with **14 tools** registered:
+- `src/mousehash/mcp/` — FastMCP server with **16 tools** registered:
   - Targets + manifests + readiness: `allen_list_datasets`, `allen_build_manifest`, `get_manifest`, `list_runnable_tools`, `explain_tool_readiness`.
   - Views: `list_views`, `inspect_view`.
-  - Transformations: `extract_vit_features`, `extract_jpeg_sizes`.
-  - Analysis: `run_pca`, `run_nmf`, `compare_jpeg_by_animate_inanimate`.
+  - Transformations: `extract_vit_features`, `extract_jpeg_sizes`, `extract_stimulus_schedule`.
+  - Analysis: `run_pca`, `run_nmf`, `compare_jpeg_by_animate_inanimate`, `analyze_stimulus_schedule`.
   - Reports: `generate_structure_report`.
   - All-in-one pipeline: `run_allen_natural_scenes_v0`.
 
   Plus 4 `@mcp.resource` entries (`mousehash://targets`, `mousehash://targets/allen/datasets`, `mousehash://manifests/{id}`, `mousehash://tools/{name}/contract`) and 2 `@mcp.prompt` templates (`explain_dataset_readiness`, `design_analysis_plan`). Launch via `python -m mousehash.mcp` (wired in `.mcp.json`). Each tool wrapper is `@mcp_safe`-decorated so `MouseHashError` subclasses surface as structured `{error, type, details}` JSON.
 - `scripts/run_allen_v0.py` — CLI entry.
-- `tests/` — 252 tests across 22 files, runs in ~6 seconds.
+- `tests/` — 281 tests across 25 files, runs in ~6 seconds.
 
 **Not built yet (deliberately):**
 

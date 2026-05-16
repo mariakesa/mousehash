@@ -18,13 +18,19 @@ from mousehash.mcp.errors import mcp_safe
 from mousehash.tools.comparison.group_comparison import GROUP_COMPARISON_CONTRACT
 from mousehash.tools.factor_models.nmf import NMF_CONTRACT
 from mousehash.tools.factor_models.pca import PCA_CONTRACT
+from mousehash.tools.scheduling.schedule_comparison import STIMULUS_SCHEDULE_CONTRACT
 
 
 class ManifestNotFoundError(MouseHashError):
     """Requested manifest_id is not on disk under manifests_root()."""
 
 
-_CONTRACTS: list[ToolContract] = [PCA_CONTRACT, NMF_CONTRACT, GROUP_COMPARISON_CONTRACT]
+_CONTRACTS: list[ToolContract] = [
+    PCA_CONTRACT,
+    NMF_CONTRACT,
+    GROUP_COMPARISON_CONTRACT,
+    STIMULUS_SCHEDULE_CONTRACT,
+]
 _CONTRACTS_BY_NAME: dict[str, ToolContract] = {c.name: c for c in _CONTRACTS}
 
 
